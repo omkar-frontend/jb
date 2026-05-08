@@ -12,8 +12,8 @@ const portals = [
 export default function Home() {
     const navigate = useNavigate();
     return (
-        <div className="bg-black min-h-screen px-40 py-10 text-white">
-            <div className="grid grid-cols-4 gap-4">
+        <div className="bg-black min-h-[calc(100dvh)] md:px-40 md:py-10 p-5 text-white">
+            <div className="grid lg:grid-cols-4 sm:grid-cols-3 grid-cols-1 gap-4">
                 {
                     portals.map((portal) => (
                         <div key={portal.key} className="border border-neutral-800 p-4 rounded-lg flex flex-col items-center justify-center gap-3 hover:border-neutral-300 transition-all duration-300 cursor-pointer" onClick={() => navigate(`/portal/${portal.key}`)}>

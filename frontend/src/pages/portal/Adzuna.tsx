@@ -39,6 +39,7 @@ const commonSelectStyles: StylesConfig<SharedSelectOption, false> = {
         boxShadow: "none",
         minHeight: "40px",
         fontSize: "14px",
+        borderRadius: "8px",
         ":hover": {
             borderColor: "#525252",
         },
@@ -48,6 +49,7 @@ const commonSelectStyles: StylesConfig<SharedSelectOption, false> = {
         backgroundColor: "#0a0a0a",
         border: "1px solid #262626",
         fontSize: "14px",
+        borderRadius: "8px",
     }),
     option: (base, state) => ({
         ...base,
@@ -326,7 +328,7 @@ export default function Adzuna() {
           : loadedResultsCount > 0;
 
     return (
-        <div className="bg-black min-h-screen sm:px-40 sm:py-10 p-5 text-white">
+        <div className="bg-black min-h-[calc(100dvh)] sm:px-40 sm:py-10 p-5 text-white">
             <div className="flex flex-col gap-6">
                 {/* Header */}
                 <div className="flex items-center justify-between gap-3">
