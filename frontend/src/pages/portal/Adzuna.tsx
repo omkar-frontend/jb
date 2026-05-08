@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import axios from "axios";
 import moment from "moment";
-import Select from "react-select";
+import Select, { type StylesConfig } from "react-select";
 import SubHeader from "../../components/SubHeader";
 
 const ADZUNA_FIRST_PAGE = 1;
@@ -24,6 +24,60 @@ const useDebouncedValue = <T,>(value: T, delayMs: number): T => {
 type CountryOption = {
     value: string;
     label: string;
+};
+
+type SharedSelectOption = {
+    value: string;
+    label: string;
+};
+
+const commonSelectStyles: StylesConfig<SharedSelectOption, false> = {
+    control: (base, state) => ({
+        ...base,
+        backgroundColor: "#0a0a0a",
+        borderColor: state.isFocused ? "#525252" : "#262626",
+        boxShadow: "none",
+        minHeight: "40px",
+        fontSize: "14px",
+        ":hover": {
+            borderColor: "#525252",
+        },
+    }),
+    menu: (base) => ({
+        ...base,
+        backgroundColor: "#0a0a0a",
+        border: "1px solid #262626",
+        fontSize: "14px",
+    }),
+    option: (base, state) => ({
+        ...base,
+        backgroundColor: state.isFocused ? "#171717" : "#0a0a0a",
+        color: "#ffffff",
+        fontSize: "14px",
+    }),
+    singleValue: (base) => ({
+        ...base,
+        color: "#ffffff",
+        fontSize: "14px",
+    }),
+    input: (base) => ({
+        ...base,
+        color: "#ffffff",
+        fontSize: "14px",
+    }),
+    placeholder: (base) => ({
+        ...base,
+        color: "#a3a3a3",
+        fontSize: "14px",
+    }),
+    dropdownIndicator: (base) => ({
+        ...base,
+        color: "#a3a3a3",
+    }),
+    indicatorSeparator: (base) => ({
+        ...base,
+        backgroundColor: "#262626",
+    }),
 };
 
 const COUNTRY_OPTIONS: CountryOption[] = [
@@ -102,6 +156,11 @@ const getDefaultCountryOption = (): CountryOption => {
 
 type AdzunaCategory = {
     tag: string;
+    label: string;
+};
+
+type CategoryOption = {
+    value: string;
     label: string;
 };
 
@@ -267,12 +326,13 @@ export default function Adzuna() {
           : loadedResultsCount > 0;
 
     return (
-        <div className="bg-black min-h-screen px-40 py-10 text-white">
+        <div className="bg-black min-h-screen sm:px-40 sm:py-10 p-5 text-white">
             <div className="flex flex-col gap-6">
-                <div className="flex items-center justify-between">
+                {/* Header */}
+                <div className="flex items-center justify-between gap-3">
                     <SubHeader title="Adzuna" />
                     <div className="flex flex-wrap gap-2">
-                        <div className="min-w-72">
+                        <div className="sm:min-w-72">
                             <Select<CountryOption>
                                 options={COUNTRY_OPTIONS}
                                 value={selectedCountry}
@@ -281,87 +341,48 @@ export default function Adzuna() {
                                 }}
                                 isSearchable
                                 placeholder="Select country"
-                                styles={{
-                                    control: (base, state) => ({
-                                        ...base,
-                                        backgroundColor: "#0a0a0a",
-                                        borderColor: state.isFocused
-                                            ? "#525252"
-                                            : "#262626",
-                                        boxShadow: "none",
-                                        minHeight: "40px",
-                                        fontSize: "14px",
-                                        ":hover": {
-                                            borderColor: "#525252",
-                                        },
-                                    }),
-                                    menu: (base) => ({
-                                        ...base,
-                                        backgroundColor: "#0a0a0a",
-                                        border: "1px solid #262626",
-                                        fontSize: "14px",
-                                    }),
-                                    option: (base, state) => ({
-                                        ...base,
-                                        backgroundColor: state.isFocused
-                                            ? "#171717"
-                                            : "#0a0a0a",
-                                        color: "#ffffff",
-                                        fontSize: "14px",
-                                    }),
-                                    singleValue: (base) => ({
-                                        ...base,
-                                        color: "#ffffff",
-                                        fontSize: "14px",
-                                    }),
-                                    input: (base) => ({
-                                        ...base,
-                                        color: "#ffffff",
-                                        fontSize: "14px",
-                                    }),
-                                    placeholder: (base) => ({
-                                        ...base,
-                                        color: "#a3a3a3",
-                                        fontSize: "14px",
-                                    }),
-                                    dropdownIndicator: (base) => ({
-                                        ...base,
-                                        color: "#a3a3a3",
-                                    }),
-                                    indicatorSeparator: (base) => ({
-                                        ...base,
-                                        backgroundColor: "#262626",
-                                    }),
-                                }}
+                                styles={commonSelectStyles}
                             />
                         </div>
                     </div>
                 </div>
 
-                <div className="flex flex-wrap gap-2">
-                    {categories.map((cat) => {
-                        const isSelected = selectedCategory?.tag === cat.tag;
-                        return (
-                            <button
-                                key={cat.tag}
-                                type="button"
-                                onClick={() => setSelectedCategory(cat)}
-                                className={
-                                    isSelected
-                                        ? "rounded-full border border-white bg-neutral-800 px-4 py-2 text-sm transition-all duration-300"
-                                        : "rounded-full border border-neutral-800 px-4 py-2 text-sm transition-all duration-300 hover:border-neutral-600 hover:bg-neutral-900"
-                                }
-                            >
-                                {cat.label}
-                            </button>
-                        );
-                    })}
+                <div className="sm:max-w-md">
+                    <Select<CategoryOption>
+                        options={categories.map((cat) => ({
+                            value: cat.tag,
+                            label: cat.label,
+                        }))}
+                        value={
+                            selectedCategory
+                                ? {
+                                      value: selectedCategory.tag,
+                                      label: selectedCategory.label,
+                                  }
+                                : null
+                        }
+                        onChange={(option) => {
+                            if (!option) {
+                                setSelectedCategory(null);
+                                return;
+                            }
+                            setSelectedCategory({
+                                tag: option.value,
+                                label: option.label,
+                            });
+                        }}
+                        isClearable
+                        isSearchable
+                        placeholder="Select category"
+                        styles={commonSelectStyles}
+                    />
                 </div>
 
-                {selectedCategory && (
-                    <div className="flex flex-col gap-3">
-                        <div className="rounded-lg border border-neutral-800 bg-neutral-950 p-4">
-                            <div className="grid grid-cols-1 gap-3 md:grid-cols-2 lg:grid-cols-4">
+                {selectedCategory ? (
+                    <div className="grid lg:grid-cols-5 grid-cols-1 gap-3">
+                        {/* Filters */}
+                        <div className="rounded-lg border border-neutral-800 bg-neutral-950 p-4 h-fit lg:sticky lg:top-17">
+                            <div className="grid lg:grid-cols-1 grid-cols-2 gap-3">
                                 <input
                                     type="text"
                                     value={jobKeyword}
@@ -393,14 +414,14 @@ export default function Adzuna() {
                                     className="w-full rounded border border-neutral-700 bg-black px-3 py-2 text-sm text-white outline-none transition focus:border-neutral-500"
                                 />
                             </div>
-                            <div className="mt-3 flex flex-wrap items-center gap-4">
+                            <div className="mt-3 grid lg:grid-cols-1 md:grid-cols-4 sm:grid-cols-2 gap-3">
                                 <input
                                     type="number"
                                     min="1"
                                     value={maxDaysOld}
                                     onChange={(e) => setMaxDaysOld(e.target.value)}
                                     placeholder="Max days old"
-                                    className="w-40 rounded border border-neutral-700 bg-black px-3 py-2 text-sm text-white outline-none transition focus:border-neutral-500"
+                                    className="w-full rounded border border-neutral-700 bg-black px-3 py-2 text-sm text-white outline-none transition focus:border-neutral-500"
                                 />
                                 <label className="flex items-center gap-2 text-sm text-neutral-300">
                                     <input
@@ -437,116 +458,125 @@ export default function Adzuna() {
                                 </button>
                             </div>
                         </div>
-                        <div className="sticky top-16 z-10 rounded-lg border border-neutral-800 bg-neutral-950 p-4">
-                            <p className="text-sm text-neutral-400">
-                                Jobs for{" "}
-                                <span className="text-white">
-                                    {selectedCategory.label}
-                                </span>{" "}
-                                ({selectedCountry.label}, page {currentPage})
-                            </p>
-                            {jobsLoading && (
-                                <p className="text-sm text-neutral-500">
-                                    Loading…
-                                </p>
-                            )}
-                            {!jobsLoading && jobsError && (
-                                <p className="text-sm text-red-400">
-                                    {jobsError}
-                                </p>
-                            )}
-                            {!jobsLoading && !jobsError && jobsPayload && (
+                        <div className="lg:col-span-4 col-span-1 flex flex-col gap-3">
+                            {/* Job Count and Pagination */}
+                            <div className="sticky top-17 rounded-lg border border-neutral-800 bg-neutral-950 p-4">
                                 <p className="text-sm text-neutral-400">
-                                    {jobsPayload.count != null
-                                        ? `${jobsPayload.count} results`
-                                        : `${jobsPayload.results?.length ?? 0} loaded`}
+                                    Jobs for{" "}
+                                    <span className="text-white">
+                                        {selectedCategory.label}
+                                    </span>{" "}
+                                    ({selectedCountry.label}, page {currentPage})
                                 </p>
-                            )}
-                            {!jobsLoading && !jobsError && jobsPayload && (
-                                <div className="mt-1 flex items-center gap-2">
-                                    <button
-                                        type="button"
-                                        onClick={() => setCurrentPage((prev) => prev - 1)}
-                                        disabled={!canGoPrev}
-                                        className="rounded border border-neutral-700 px-3 py-1 text-sm text-white disabled:cursor-not-allowed disabled:opacity-40"
-                                    >
-                                        Prev
-                                    </button>
-                                    <span className="text-sm text-neutral-400">
-                                        Page {currentPage}
-                                        {estimatedTotalPages != null
-                                            ? ` of ${estimatedTotalPages}`
-                                            : ""}
-                                    </span>
-                                    <button
-                                        type="button"
-                                        onClick={() => setCurrentPage((prev) => prev + 1)}
-                                        disabled={!canGoNext}
-                                        className="rounded border border-neutral-700 px-3 py-1 text-sm text-white disabled:cursor-not-allowed disabled:opacity-40"
-                                    >
-                                        Next
-                                    </button>
+                                {jobsLoading && (
+                                    <p className="text-sm text-neutral-500">
+                                        Loading…
+                                    </p>
+                                )}
+                                {!jobsLoading && jobsError && (
+                                    <p className="text-sm text-red-400">
+                                        {jobsError}
+                                    </p>
+                                )}
+                                {!jobsLoading && !jobsError && jobsPayload && (
+                                    <p className="text-sm text-neutral-400">
+                                        {jobsPayload.count != null
+                                            ? `${jobsPayload.count} results`
+                                            : `${jobsPayload.results?.length ?? 0} loaded`}
+                                    </p>
+                                )}
+                                {!jobsLoading && !jobsError && jobsPayload && (
+                                    <div className="mt-1 flex items-center gap-2">
+                                        <button
+                                            type="button"
+                                            onClick={() => setCurrentPage((prev) => prev - 1)}
+                                            disabled={!canGoPrev}
+                                            className="rounded border border-neutral-700 px-3 py-1 text-sm text-white disabled:cursor-not-allowed disabled:opacity-40"
+                                        >
+                                            Prev
+                                        </button>
+                                        <span className="text-sm text-neutral-400">
+                                            Page {currentPage}
+                                            {estimatedTotalPages != null
+                                                ? ` of ${estimatedTotalPages}`
+                                                : ""}
+                                        </span>
+                                        <button
+                                            type="button"
+                                            onClick={() => setCurrentPage((prev) => prev + 1)}
+                                            disabled={!canGoNext}
+                                            className="rounded border border-neutral-700 px-3 py-1 text-sm text-white disabled:cursor-not-allowed disabled:opacity-40"
+                                        >
+                                            Next
+                                        </button>
+                                    </div>
+                                )}
+                            </div>
+                            {/* Jobs List */}
+                            {!jobsLoading && !jobsError && jobsPayload?.results && (
+                                <div className="flex flex-col gap-3 rounded-lg border border-neutral-800 bg-neutral-950 p-4">
+                                    {jobsPayload.results.map((job, i) => (
+                                        <a
+                                            key={job.id ?? `${job.title ?? "job"}-${i}`}
+                                            href={job.redirect_url ?? "#"}
+                                            target="_blank"
+                                            rel="noreferrer"
+                                            className="block rounded-lg border border-neutral-800 bg-black p-4 transition-all duration-200 hover:border-neutral-600 hover:bg-neutral-900"
+                                        >
+                                            <div className="flex items-start justify-between gap-4">
+                                                <div className="flex-1">
+                                                    <h3 className="text-base font-semibold text-white">
+                                                        {job.title ?? "Untitled"}
+                                                    </h3>
+                                                    <p className="mt-1 text-sm text-neutral-300">
+                                                        {job.company?.display_name ??
+                                                            "Unknown company"}{" "}
+                                                        •{" "}
+                                                        {job.location?.display_name ??
+                                                            "Unknown location"}
+                                                    </p>
+                                                </div>
+                                                <p className="text-sm text-green-400">
+                                                    {job.salary_min != null &&
+                                                    job.salary_max != null
+                                                        ? `${Math.round(job.salary_min).toLocaleString()} - ${Math.round(job.salary_max).toLocaleString()}`
+                                                        : "Salary not listed"}
+                                                </p>
+                                            </div>
+                                            <p className="mt-2 text-sm text-neutral-400">
+                                                {job.description
+                                                    ? `${job.description.slice(0, 260)}${job.description.length > 260 ? "..." : ""}`
+                                                    : "No description"}
+                                            </p>
+                                            <div className="mt-3 flex flex-wrap gap-3 text-xs text-neutral-500">
+                                                <span>
+                                                    Type:{" "}
+                                                    {job.contract_time
+                                                        ? job.contract_time.replace(
+                                                            "_",
+                                                            " ",
+                                                        )
+                                                        : "N/A"}
+                                                </span>
+                                                <span>
+                                                    Posted:{" "}
+                                                    {job.created
+                                                        ? moment(job.created).fromNow()
+                                                        : "N/A"}
+                                                </span>
+                                            </div>
+                                        </a>
+                                    ))}
                                 </div>
                             )}
                         </div>
-                        {!jobsLoading && !jobsError && jobsPayload?.results && (
-                            <div className="flex flex-col gap-3 rounded-lg border border-neutral-800 bg-neutral-950 p-4">
-                                {jobsPayload.results.map((job, i) => (
-                                    <a
-                                        key={job.id ?? `${job.title ?? "job"}-${i}`}
-                                        href={job.redirect_url ?? "#"}
-                                        target="_blank"
-                                        rel="noreferrer"
-                                        className="block rounded-lg border border-neutral-800 bg-black p-4 transition-all duration-200 hover:border-neutral-600 hover:bg-neutral-900"
-                                    >
-                                        <div className="flex items-start justify-between gap-4">
-                                            <div className="flex-1">
-                                                <h3 className="text-base font-semibold text-white">
-                                                    {job.title ?? "Untitled"}
-                                                </h3>
-                                                <p className="mt-1 text-sm text-neutral-300">
-                                                    {job.company?.display_name ??
-                                                        "Unknown company"}{" "}
-                                                    •{" "}
-                                                    {job.location?.display_name ??
-                                                        "Unknown location"}
-                                                </p>
-                                            </div>
-                                            <p className="text-sm text-green-400">
-                                                {job.salary_min != null &&
-                                                job.salary_max != null
-                                                    ? `${Math.round(job.salary_min).toLocaleString()} - ${Math.round(job.salary_max).toLocaleString()}`
-                                                    : "Salary not listed"}
-                                            </p>
-                                        </div>
-                                        <p className="mt-2 text-sm text-neutral-400">
-                                            {job.description
-                                                ? `${job.description.slice(0, 260)}${job.description.length > 260 ? "..." : ""}`
-                                                : "No description"}
-                                        </p>
-                                        <div className="mt-3 flex flex-wrap gap-3 text-xs text-neutral-500">
-                                            <span>
-                                                Type:{" "}
-                                                {job.contract_time
-                                                    ? job.contract_time.replace(
-                                                          "_",
-                                                          " ",
-                                                      )
-                                                    : "N/A"}
-                                            </span>
-                                            <span>
-                                                Posted:{" "}
-                                                {job.created
-                                                    ? moment(job.created).fromNow()
-                                                    : "N/A"}
-                                            </span>
-                                        </div>
-                                    </a>
-                                ))}
-                            </div>
-                        )}
                     </div>
-                )}
+                ) : (
+                    <div className="h-96 w-full flex items-center justify-center">
+                        <p className="text-sm text-neutral-100">Select category to see jobs</p>
+                    </div>
+                )
+            }
             </div>
         </div>
     );
