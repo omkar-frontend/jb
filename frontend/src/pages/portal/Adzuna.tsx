@@ -34,51 +34,53 @@ type SharedSelectOption = {
 const commonSelectStyles: StylesConfig<SharedSelectOption, false> = {
     control: (base, state) => ({
         ...base,
-        backgroundColor: "#0a0a0a",
-        borderColor: state.isFocused ? "#525252" : "#262626",
+        backgroundColor: "#ffffff",
+        borderColor: state.isFocused ? "#a3a3a3" : "#e5e5e5",
         boxShadow: "none",
         minHeight: "40px",
         fontSize: "14px",
         borderRadius: "8px",
         ":hover": {
-            borderColor: "#525252",
+            borderColor: "#d4d4d4",
         },
     }),
     menu: (base) => ({
         ...base,
-        backgroundColor: "#0a0a0a",
-        border: "1px solid #262626",
+        backgroundColor: "#ffffff",
+        border: "1px solid #e5e5e5",
         fontSize: "14px",
         borderRadius: "8px",
+        boxShadow:
+            "0 4px 6px -1px rgb(0 0 0 / 0.07), 0 2px 4px -2px rgb(0 0 0 / 0.07)",
     }),
     option: (base, state) => ({
         ...base,
-        backgroundColor: state.isFocused ? "#171717" : "#0a0a0a",
-        color: "#ffffff",
+        backgroundColor: state.isFocused ? "#f5f5f5" : "#ffffff",
+        color: "#171717",
         fontSize: "14px",
     }),
     singleValue: (base) => ({
         ...base,
-        color: "#ffffff",
+        color: "#171717",
         fontSize: "14px",
     }),
     input: (base) => ({
         ...base,
-        color: "#ffffff",
+        color: "#171717",
         fontSize: "14px",
     }),
     placeholder: (base) => ({
         ...base,
-        color: "#a3a3a3",
+        color: "#737373",
         fontSize: "14px",
     }),
     dropdownIndicator: (base) => ({
         ...base,
-        color: "#a3a3a3",
+        color: "#737373",
     }),
     indicatorSeparator: (base) => ({
         ...base,
-        backgroundColor: "#262626",
+        backgroundColor: "#e5e5e5",
     }),
 };
 
@@ -328,76 +330,73 @@ export default function Adzuna() {
           : loadedResultsCount > 0;
 
     return (
-        <div className="bg-black min-h-[calc(100dvh)] sm:px-40 sm:py-10 p-5 text-white">
+        <div className="min-h-[calc(100dvh)] bg-neutral-50 p-5 text-neutral-900 sm:px-40 sm:py-10">
             <div className="flex flex-col gap-6">
                 {/* Header */}
                 <div className="flex items-center justify-between gap-3">
                     <SubHeader title="Adzuna" />
                     <div className="flex flex-wrap gap-2">
-                        <div className="sm:min-w-72">
-                            <Select<CountryOption>
-                                options={COUNTRY_OPTIONS}
-                                value={selectedCountry}
+                        <div className="sm:min-w-72 min-w-0">
+                            <Select<CategoryOption>
+                                options={categories.map((cat) => ({
+                                    value: cat.tag,
+                                    label: cat.label,
+                                }))}
+                                value={
+                                    selectedCategory
+                                        ? {
+                                              value: selectedCategory.tag,
+                                              label: selectedCategory.label,
+                                          }
+                                        : null
+                                }
                                 onChange={(option) => {
-                                    if (option) setSelectedCountry(option);
+                                    if (!option) {
+                                        setSelectedCategory(null);
+                                        return;
+                                    }
+                                    setSelectedCategory({
+                                        tag: option.value,
+                                        label: option.label,
+                                    });
                                 }}
+                                isClearable
                                 isSearchable
-                                placeholder="Select country"
+                                placeholder="Select category"
                                 styles={commonSelectStyles}
                             />
                         </div>
                     </div>
                 </div>
 
-                <div className="sm:max-w-md">
-                    <Select<CategoryOption>
-                        options={categories.map((cat) => ({
-                            value: cat.tag,
-                            label: cat.label,
-                        }))}
-                        value={
-                            selectedCategory
-                                ? {
-                                      value: selectedCategory.tag,
-                                      label: selectedCategory.label,
-                                  }
-                                : null
-                        }
-                        onChange={(option) => {
-                            if (!option) {
-                                setSelectedCategory(null);
-                                return;
-                            }
-                            setSelectedCategory({
-                                tag: option.value,
-                                label: option.label,
-                            });
-                        }}
-                        isClearable
-                        isSearchable
-                        placeholder="Select category"
-                        styles={commonSelectStyles}
-                    />
-                </div>
-
                 {selectedCategory ? (
                     <div className="grid lg:grid-cols-5 grid-cols-1 gap-3">
                         {/* Filters */}
-                        <div className="rounded-lg border border-neutral-800 bg-neutral-950 p-4 h-fit lg:sticky lg:top-17">
+                        <div className="h-fit rounded-lg border border-neutral-200 bg-white p-4 shadow-sm lg:sticky lg:top-17">
                             <div className="grid lg:grid-cols-1 grid-cols-2 gap-3">
+                                <Select<CountryOption>
+                                    options={COUNTRY_OPTIONS}
+                                    value={selectedCountry}
+                                    onChange={(option) => {
+                                        if (option) setSelectedCountry(option);
+                                    }}
+                                    isSearchable
+                                    placeholder="Select country"
+                                    styles={commonSelectStyles}
+                                />
                                 <input
                                     type="text"
                                     value={jobKeyword}
                                     onChange={(e) => setJobKeyword(e.target.value)}
                                     placeholder="Search job title (e.g. developer)"
-                                    className="w-full rounded border border-neutral-700 bg-black px-3 py-2 text-sm text-white outline-none transition focus:border-neutral-500"
+                                    className="w-full rounded-lg border border-neutral-200 bg-white px-3 py-2 text-sm text-neutral-900 outline-none transition placeholder:text-neutral-400 focus:border-neutral-400"
                                 />
                                 <input
                                     type="text"
                                     value={jobLocation}
                                     onChange={(e) => setJobLocation(e.target.value)}
                                     placeholder="Location (where)"
-                                    className="w-full rounded border border-neutral-700 bg-black px-3 py-2 text-sm text-white outline-none transition focus:border-neutral-500"
+                                    className="w-full rounded-lg border border-neutral-200 bg-white px-3 py-2 text-sm text-neutral-900 outline-none transition placeholder:text-neutral-400 focus:border-neutral-400"
                                 />
                                 <input
                                     type="number"
@@ -405,7 +404,7 @@ export default function Adzuna() {
                                     value={salaryMin}
                                     onChange={(e) => setSalaryMin(e.target.value)}
                                     placeholder="Min salary"
-                                    className="w-full rounded border border-neutral-700 bg-black px-3 py-2 text-sm text-white outline-none transition focus:border-neutral-500"
+                                    className="w-full rounded-lg border border-neutral-200 bg-white px-3 py-2 text-sm text-neutral-900 outline-none transition placeholder:text-neutral-400 focus:border-neutral-400"
                                 />
                                 <input
                                     type="number"
@@ -413,7 +412,7 @@ export default function Adzuna() {
                                     value={salaryMax}
                                     onChange={(e) => setSalaryMax(e.target.value)}
                                     placeholder="Max salary"
-                                    className="w-full rounded border border-neutral-700 bg-black px-3 py-2 text-sm text-white outline-none transition focus:border-neutral-500"
+                                    className="w-full rounded-lg border border-neutral-200 bg-white px-3 py-2 text-sm text-neutral-900 outline-none transition placeholder:text-neutral-400 focus:border-neutral-400"
                                 />
                             </div>
                             <div className="mt-3 grid lg:grid-cols-1 md:grid-cols-4 sm:grid-cols-2 gap-3">
@@ -423,23 +422,23 @@ export default function Adzuna() {
                                     value={maxDaysOld}
                                     onChange={(e) => setMaxDaysOld(e.target.value)}
                                     placeholder="Max days old"
-                                    className="w-full rounded border border-neutral-700 bg-black px-3 py-2 text-sm text-white outline-none transition focus:border-neutral-500"
+                                    className="w-full rounded-lg border border-neutral-200 bg-white px-3 py-2 text-sm text-neutral-900 outline-none transition placeholder:text-neutral-400 focus:border-neutral-400"
                                 />
-                                <label className="flex items-center gap-2 text-sm text-neutral-300">
+                                <label className="flex items-center gap-2 text-sm text-neutral-700">
                                     <input
                                         type="checkbox"
                                         checked={fullTimeOnly}
                                         onChange={(e) => setFullTimeOnly(e.target.checked)}
-                                        className="h-4 w-4 rounded border-neutral-600 bg-black"
+                                        className="h-4 w-4 rounded border border-neutral-300 accent-emerald-600"
                                     />
                                     Full-time only
                                 </label>
-                                <label className="flex items-center gap-2 text-sm text-neutral-300">
+                                <label className="flex items-center gap-2 text-sm text-neutral-700">
                                     <input
                                         type="checkbox"
                                         checked={partTimeOnly}
                                         onChange={(e) => setPartTimeOnly(e.target.checked)}
-                                        className="h-4 w-4 rounded border-neutral-600 bg-black"
+                                        className="h-4 w-4 rounded border border-neutral-300 accent-emerald-600"
                                     />
                                     Part-time only
                                 </label>
@@ -454,7 +453,7 @@ export default function Adzuna() {
                                         setFullTimeOnly(false);
                                         setPartTimeOnly(false);
                                     }}
-                                    className="rounded border border-neutral-700 px-3 py-2 text-sm text-neutral-200 transition hover:border-neutral-500 hover:bg-neutral-900"
+                                    className="cursor-pointer rounded-lg border border-neutral-200 px-3 py-2 text-sm text-neutral-700 transition hover:border-neutral-300 hover:bg-neutral-50"
                                 >
                                     Clear filters
                                 </button>
@@ -462,10 +461,10 @@ export default function Adzuna() {
                         </div>
                         <div className="lg:col-span-4 col-span-1 flex flex-col gap-3">
                             {/* Job Count and Pagination */}
-                            <div className="sticky top-17 rounded-lg border border-neutral-800 bg-neutral-950 p-4">
-                                <p className="text-sm text-neutral-400">
+                            <div className="sticky top-17 rounded-lg border border-neutral-200 bg-white p-4 shadow-sm">
+                                <p className="text-sm text-neutral-600">
                                     Jobs for{" "}
-                                    <span className="text-white">
+                                    <span className="text-neutral-900">
                                         {selectedCategory.label}
                                     </span>{" "}
                                     ({selectedCountry.label}, page {currentPage})
@@ -476,12 +475,12 @@ export default function Adzuna() {
                                     </p>
                                 )}
                                 {!jobsLoading && jobsError && (
-                                    <p className="text-sm text-red-400">
+                                    <p className="text-sm text-red-600">
                                         {jobsError}
                                     </p>
                                 )}
                                 {!jobsLoading && !jobsError && jobsPayload && (
-                                    <p className="text-sm text-neutral-400">
+                                    <p className="text-sm text-neutral-600">
                                         {jobsPayload.count != null
                                             ? `${jobsPayload.count} results`
                                             : `${jobsPayload.results?.length ?? 0} loaded`}
@@ -493,11 +492,11 @@ export default function Adzuna() {
                                             type="button"
                                             onClick={() => setCurrentPage((prev) => prev - 1)}
                                             disabled={!canGoPrev}
-                                            className="rounded border border-neutral-700 px-3 py-1 text-sm text-white disabled:cursor-not-allowed disabled:opacity-40"
+                                            className="cursor-pointer rounded-lg border border-neutral-200 bg-white px-3 py-1 text-sm text-neutral-800 transition hover:bg-neutral-50 disabled:cursor-not-allowed disabled:opacity-40"
                                         >
                                             Prev
                                         </button>
-                                        <span className="text-sm text-neutral-400">
+                                        <span className="text-sm text-neutral-600">
                                             Page {currentPage}
                                             {estimatedTotalPages != null
                                                 ? ` of ${estimatedTotalPages}`
@@ -507,7 +506,7 @@ export default function Adzuna() {
                                             type="button"
                                             onClick={() => setCurrentPage((prev) => prev + 1)}
                                             disabled={!canGoNext}
-                                            className="rounded border border-neutral-700 px-3 py-1 text-sm text-white disabled:cursor-not-allowed disabled:opacity-40"
+                                            className="cursor-pointer rounded-lg border border-neutral-200 bg-white px-3 py-1 text-sm text-neutral-800 transition hover:bg-neutral-50 disabled:cursor-not-allowed disabled:opacity-40"
                                         >
                                             Next
                                         </button>
@@ -516,21 +515,21 @@ export default function Adzuna() {
                             </div>
                             {/* Jobs List */}
                             {!jobsLoading && !jobsError && jobsPayload?.results && (
-                                <div className="flex flex-col gap-3 rounded-lg border border-neutral-800 bg-neutral-950 p-4">
+                                <div className="flex flex-col gap-3 rounded-lg border border-neutral-200 bg-white p-4 shadow-sm">
                                     {jobsPayload.results.map((job, i) => (
                                         <a
                                             key={job.id ?? `${job.title ?? "job"}-${i}`}
                                             href={job.redirect_url ?? "#"}
                                             target="_blank"
                                             rel="noreferrer"
-                                            className="block rounded-lg border border-neutral-800 bg-black p-4 transition-all duration-200 hover:border-neutral-600 hover:bg-neutral-900"
+                                            className="block rounded-lg border border-neutral-200 bg-neutral-50/80 p-4 transition-all duration-200 hover:border-neutral-300 hover:bg-white"
                                         >
                                             <div className="flex items-start justify-between gap-4">
                                                 <div className="flex-1">
-                                                    <h3 className="text-base font-semibold text-white">
+                                                    <h3 className="text-base font-semibold text-neutral-900">
                                                         {job.title ?? "Untitled"}
                                                     </h3>
-                                                    <p className="mt-1 text-sm text-neutral-300">
+                                                    <p className="mt-1 text-sm text-neutral-600">
                                                         {job.company?.display_name ??
                                                             "Unknown company"}{" "}
                                                         •{" "}
@@ -538,14 +537,14 @@ export default function Adzuna() {
                                                             "Unknown location"}
                                                     </p>
                                                 </div>
-                                                <p className="text-sm text-green-400">
+                                                <p className="text-sm text-green-700">
                                                     {job.salary_min != null &&
                                                     job.salary_max != null
                                                         ? `${Math.round(job.salary_min).toLocaleString()} - ${Math.round(job.salary_max).toLocaleString()}`
                                                         : "Salary not listed"}
                                                 </p>
                                             </div>
-                                            <p className="mt-2 text-sm text-neutral-400">
+                                            <p className="mt-2 text-sm text-neutral-600">
                                                 {job.description
                                                     ? `${job.description.slice(0, 260)}${job.description.length > 260 ? "..." : ""}`
                                                     : "No description"}
@@ -575,7 +574,7 @@ export default function Adzuna() {
                     </div>
                 ) : (
                     <div className="h-96 w-full flex items-center justify-center">
-                        <p className="text-sm text-neutral-100">Select category to see jobs</p>
+                        <p className="text-sm text-neutral-600">Select category to see jobs</p>
                     </div>
                 )
             }

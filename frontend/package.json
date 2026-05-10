@@ -19,6 +19,7 @@
     "react-dom": "^19.2.5",
     "react-router-dom": "^7.15.0",
     "react-select": "^5.10.2",
+    "serpapi": "^2.2.1",
     "tailwindcss": "^4.2.4"
   },
   "devDependencies": {

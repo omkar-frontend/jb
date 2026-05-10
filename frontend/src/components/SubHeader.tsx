@@ -9,10 +9,10 @@ export default function SubHeader({ title }: SubHeaderProps) {
     const navigate = useNavigate();
     return (
         <div className="flex items-center gap-4">
-            <button className="border border-neutral-800 rounded-full p-2 hover:bg-neutral-800 transition-all duration-300 cursor-pointer" onClick={() => navigate(-1)}>
-                <ChevronLeft className="w-4 h-4" />
+            <button type="button" className="cursor-pointer rounded-full border border-neutral-200 p-2 text-neutral-700 transition-all duration-300 hover:border-neutral-300 hover:bg-neutral-100" onClick={() => navigate(-1)}>
+                <ChevronLeft className="h-4 w-4" />
             </button>
-            <p className="text-center text-xl font-semibold">{title}</p>
+            <p className="text-xl font-semibold text-neutral-900">{title}</p>
         </div>
     )
 }
