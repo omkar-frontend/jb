@@ -683,7 +683,7 @@ export default function GoogleJobs() {
                                                 job.job_id ??
                                                 `${job.title ?? "job"}-${index}`
                                             }
-                                            className="rounded-lg border border-neutral-200 bg-neutral-50/80 p-4 transition-all duration-200 hover:border-neutral-300 hover:bg-white"
+                                            className="rounded-lg border border-neutral-200 bg-neutral-50/80 p-4 transition-all duration-200 hover:border-emerald-400 hover:bg-white"
                                         >
                                             <div className="flex flex-col gap-3 sm:flex-row sm:items-start">
                                                 {job.thumbnail ? (

@@ -445,7 +445,7 @@ export default function Remotive() {
                                         href={job.url ?? "#"}
                                         target="_blank"
                                         rel="noreferrer"
-                                        className="block rounded-lg border border-neutral-200 bg-neutral-50/80 p-4 transition-all duration-200 hover:border-neutral-300 hover:bg-white"
+                                        className="block rounded-lg border border-neutral-200 bg-neutral-50/80 p-4 transition-all duration-200 hover:border-emerald-400 hover:bg-white"
                                     >
                                         <div className="flex items-start justify-between gap-4">
                                             <div className="flex min-w-0 flex-1 gap-3">

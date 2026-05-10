@@ -362,6 +362,125 @@ app.get("/remotive/remote-jobs/categories", async (req, res) => {
   });
 });
 
+/** OpenWeb Ninja JSearch — API key stays on the server (`x-api-key`). See https://www.openwebninja.com/api/jsearch/docs */
+const JSEARCH_BASE = "https://api.openwebninja.com/jsearch";
+
+const jsearchAllowedSearchParams = new Set([
+  "query",
+  "page",
+  "num_pages",
+  "country",
+  "language",
+  "date_posted",
+  "work_from_home",
+  "employment_types",
+  "job_requirements",
+  "radius",
+  "exclude_job_publishers",
+  "fields",
+]);
+
+app.get("/jsearch/search", async (req, res) => {
+  const apiKey = process.env.JSEARCH_API_KEY;
+  if (!apiKey) {
+    return res
+      .status(500)
+      .json({ success: false, error: "JSearch API key is not set" });
+  }
+
+  const params = {};
+  for (const key of jsearchAllowedSearchParams) {
+    const value = req.query[key];
+    if (value != null && String(value).trim() !== "") {
+      params[key] = String(value).trim();
+    }
+  }
+
+  if (!params.query) {
+    params.query = "software developer jobs";
+  }
+
+  console.log(params);
+
+  try {
+    const response = await axios.get(`${JSEARCH_BASE}/search`, {
+      timeout: 30_000,
+      headers: {
+        Accept: "application/json",
+        "x-api-key": apiKey,
+      },
+      params,
+    });
+    res.json({ success: true, data: response.data });
+  } catch (err) {
+    const status = err?.response?.status ?? 502;
+    const body = err?.response?.data;
+    const message =
+      (typeof body === "object" &&
+        body != null &&
+        (body.message || body.error || body.status)) ||
+      err?.message ||
+      "JSearch search failed";
+    const str =
+      typeof message === "string" ? message : JSON.stringify(message);
+    res.status(status).json({ success: false, error: String(str) });
+  }
+});
+
+const jsearchAllowedJobDetailsParams = new Set([
+  "job_id",
+  "country",
+  "language",
+  "fields",
+]);
+
+app.get("/jsearch/job-details", async (req, res) => {
+  const apiKey = process.env.JSEARCH_API_KEY;
+  if (!apiKey) {
+    return res
+      .status(500)
+      .json({ success: false, error: "JSearch API key is not set" });
+  }
+
+  const params = {};
+  for (const key of jsearchAllowedJobDetailsParams) {
+    const value = req.query[key];
+    if (value != null && String(value).trim() !== "") {
+      params[key] = String(value).trim();
+    }
+  }
+
+  if (!params.job_id) {
+    return res
+      .status(400)
+      .json({ success: false, error: "job_id is required" });
+  }
+
+  try {
+    const response = await axios.get(`${JSEARCH_BASE}/job-details`, {
+      timeout: 30_000,
+      headers: {
+        Accept: "application/json",
+        "x-api-key": apiKey,
+      },
+      params,
+    });
+    res.json({ success: true, data: response.data });
+  } catch (err) {
+    const status = err?.response?.status ?? 502;
+    const body = err?.response?.data;
+    const message =
+      (typeof body === "object" &&
+        body != null &&
+        (body.message || body.error)) ||
+      err?.message ||
+      "JSearch job details failed";
+    const str =
+      typeof message === "string" ? message : JSON.stringify(message);
+    res.status(status).json({ success: false, error: String(str) });
+  }
+});
+
 const server = app.listen(PORT, () => {
   console.log(`Server running on port ${PORT}`);
 });
