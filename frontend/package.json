@@ -10,6 +10,8 @@
     "preview": "vite preview"
   },
   "dependencies": {
+    "@google/generative-ai": "^0.24.1",
+    "@supabase/supabase-js": "^2.106.1",
     "@tailwindcss/vite": "^4.2.4",
     "axios": "^1.13.6",
     "country-state-city": "^3.2.1",

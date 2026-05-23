@@ -1,4 +1,5 @@
 import { useNavigate } from "react-router-dom";
+import CvUpload from "../components/CvUpload";
 import adzuna from '/logos/adzuna.png';
 import google from '/logos/google.png';
 import himalayas from '/logos/himalayas.ico';
@@ -60,6 +61,7 @@ export default function Home() {
     const navigate = useNavigate();
     return (
         <div className="min-h-[calc(100dvh)] bg-white p-5 text-neutral-900 md:px-40 md:py-10">
+            <CvUpload />
             <div className="grid grid-cols-1 gap-4 sm:grid-cols-3 lg:grid-cols-4">
                 {
                     portals.map((portal) => (

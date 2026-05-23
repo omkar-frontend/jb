@@ -1,8 +1,13 @@
 import ReactDOM from 'react-dom/client'
 import { createBrowserRouter, RouterProvider, createRoutesFromElements, Route } from 'react-router-dom'
 import Layout from './components/Layout'
+import { AuthProvider } from './context/AuthContext'
 import Home from './pages/Home'
+import Login from './pages/Login'
+import Profile from './pages/Profile'
+import Signup from './pages/Signup'
 import Portal from './pages/portal/Portal'
+import Details from './pages/Details'
 import './index.css'
 
 const router = createBrowserRouter(
@@ -10,6 +15,10 @@ const router = createBrowserRouter(
         <>
             <Route path='/' element={<Layout/>}>
                 <Route path='/' element={<Home/>} />
+                <Route path='/login' element={<Login/>} />
+                <Route path='/signup' element={<Signup/>} />
+                <Route path='/profile' element={<Profile/>} />
+                <Route path='/details' element={<Details/>} />
                 <Route path='/portal/:portal' element={<Portal/>} />
             </Route>
         </>
@@ -23,5 +32,7 @@ if (!rootElement) {
 }
 
 ReactDOM.createRoot(rootElement).render(
-    <RouterProvider router={router} />
+    <AuthProvider>
+        <RouterProvider router={router} />
+    </AuthProvider>
 )

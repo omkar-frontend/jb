@@ -2,9 +2,26 @@ const express = require("express");
 const cors = require("cors");
 const dotenv = require("dotenv");
 const axios = require("axios");
+const multer = require("multer");
+const { createClient } = require("@supabase/supabase-js");
+const { GoogleGenerativeAI } = require("@google/generative-ai");
 const { getJson } = require("serpapi");
 
 dotenv.config();
+
+const supabaseUrl = process.env.SUPABASE_URL;
+const supabaseAnonKey = process.env.SUPABASE_ANON_KEY;
+
+if (!supabaseUrl || !supabaseAnonKey) {
+  console.warn(
+    "SUPABASE_URL or SUPABASE_ANON_KEY missing — /auth/me will not work until set in .env"
+  );
+}
+
+const supabase =
+  supabaseUrl && supabaseAnonKey
+    ? createClient(supabaseUrl, supabaseAnonKey)
+    : null;
 
 const app = express();
 
@@ -18,6 +35,423 @@ const corsOptions = {
 
 app.use(cors(corsOptions));
 app.use(express.json());
+
+const CV_MAX_BYTES = 5 * 1024 * 1024;
+const cvUpload = multer({
+  storage: multer.memoryStorage(),
+  limits: { fileSize: CV_MAX_BYTES },
+});
+
+const CV_ALLOWED_MIME = new Set([
+  "application/pdf",
+  "text/plain",
+  "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+  "application/msword",
+]);
+
+const CV_EXTRACTION_PROMPT = `You are an expert resume/CV parser. Extract structured information from this document.
+Return ONLY valid JSON (no markdown, no code fences) matching this schema:
+{
+  "fullName": string | null,
+  "email": string | null,
+  "phone": string | null,
+  "location": string | null,
+  "summary": string | null,
+  "designation": string | null,
+  "role": string | null,
+  "skills": string[],
+  "projects": [
+    {
+      "name": string,
+      "description": string | null,
+      "startDate": string | null,
+      "endDate": string | null,
+      "link": string | null
+    }
+  ],
+  "experience": [
+    {
+      "title": string,
+      "company": string | null,
+      "startDate": string | null,
+      "endDate": string | null,
+      "description": string | null
+    }
+  ],
+  "education": [
+    {
+      "degree": string | null,
+      "institution": string | null,
+      "year": string | null
+    }
+  ],
+  "languages": string[],
+  "links": {
+    "linkedin": string | null,
+    "github": string | null,
+    "portfolio": string | null,
+    "other": string[]
+  },
+  "certifications": [
+    {
+      "name": string,
+      "issuer": string | null,
+      "year": string | null
+    }
+  ]
+}
+Use null for missing scalar fields and empty arrays when none found. Dates as written on the CV.`;
+
+function parseGeminiJson(text) {
+  const trimmed = String(text ?? "").trim();
+  const fenced = trimmed.match(/```(?:json)?\s*([\s\S]*?)```/i);
+  const candidate = fenced ? fenced[1].trim() : trimmed;
+  return JSON.parse(candidate);
+}
+
+function formatAuthUser(user) {
+  return {
+    id: user.id,
+    email: user.email ?? null,
+    phone: user.phone ?? null,
+    role: user.role ?? null,
+    emailConfirmedAt: user.email_confirmed_at ?? null,
+    phoneConfirmedAt: user.phone_confirmed_at ?? null,
+    createdAt: user.created_at ?? null,
+    lastSignInAt: user.last_sign_in_at ?? null,
+    updatedAt: user.updated_at ?? null,
+    metadata: user.user_metadata ?? {},
+    providers: user.app_metadata?.providers ?? {},
+    provider: user.app_metadata?.provider ?? null,
+  };
+}
+
+async function requireAuth(req, res, next) {
+  if (!supabase) {
+    return res.status(503).json({
+      success: false,
+      error: "Auth is not configured on the server",
+    });
+  }
+
+  const header = req.headers.authorization;
+  if (!header || !header.startsWith("Bearer ")) {
+    return res.status(401).json({
+      success: false,
+      error: "Missing or invalid Authorization header",
+    });
+  }
+
+  const token = header.slice(7).trim();
+  if (!token) {
+    return res.status(401).json({
+      success: false,
+      error: "Missing or invalid Authorization header",
+    });
+  }
+
+  const {
+    data: { user },
+    error,
+  } = await supabase.auth.getUser(token);
+
+  if (error || !user) {
+    return res.status(401).json({
+      success: false,
+      error: "Invalid or expired session",
+    });
+  }
+
+  req.authUser = user;
+  req.accessToken = token;
+  next();
+}
+
+function getSupabaseAsUser(accessToken) {
+  if (!supabaseUrl || !supabaseAnonKey) return null;
+  return createClient(supabaseUrl, supabaseAnonKey, {
+    global: {
+      headers: { Authorization: `Bearer ${accessToken}` },
+    },
+  });
+}
+
+const JOBS_BOARD_SCHEMA = "jobs_board";
+const PROFILE_TABLE = "user_details";
+
+function formatProfileRow(row) {
+  if (!row) return null;
+  let extracted = null;
+  if (row.extractedInformation) {
+    try {
+      extracted = JSON.parse(row.extractedInformation);
+    } catch {
+      extracted = row.extractedInformation;
+    }
+  }
+  return {
+    id: row.id,
+    extractedInformation: extracted,
+    createdAt: row.created_at ?? null,
+    updatedAt: row.updated_at ?? null,
+    createdBy: row.created_by ?? null,
+    updatedBy: row.updated_by ?? null,
+  };
+}
+
+async function findProfileForUser(supabaseUser, userId) {
+  const { data, error } = await supabaseUser
+    .schema(JOBS_BOARD_SCHEMA)
+    .from(PROFILE_TABLE)
+    .select(
+      "id, extractedInformation, created_at, updated_at, created_by, updated_by"
+    )
+    .eq("created_by", userId)
+    .order("created_at", { ascending: false })
+    .limit(1)
+    .maybeSingle();
+
+  return { data, error };
+}
+
+app.get("/auth/me", requireAuth, (req, res) => {
+  res.json({ success: true, data: formatAuthUser(req.authUser) });
+});
+
+app.post("/cv/extract", cvUpload.single("cv"), async (req, res) => {
+  const apiKey = process.env.GEMINI_API_KEY;
+  if (!apiKey) {
+    return res
+      .status(500)
+      .json({ success: false, error: "Gemini API key is not configured" });
+  }
+
+  if (!req.file) {
+    return res
+      .status(400)
+      .json({ success: false, error: "Please upload a CV file (field: cv)" });
+  }
+
+  const mimeType = req.file.mimetype;
+  if (!CV_ALLOWED_MIME.has(mimeType)) {
+    return res.status(400).json({
+      success: false,
+      error: "Unsupported file type. Use PDF, TXT, DOC, or DOCX (max 5 MB).",
+    });
+  }
+
+  try {
+    const genAI = new GoogleGenerativeAI(apiKey);
+    const model = genAI.getGenerativeModel({
+      // gemini-1.5-* retired on v1beta; override via GEMINI_MODEL (e.g. gemini-2.5-pro)
+      model: process.env.GEMINI_MODEL || "gemini-2.5-flash",
+      generationConfig: { responseMimeType: "application/json" },
+    });
+
+    const base64 = req.file.buffer.toString("base64");
+    const result = await model.generateContent([
+      {
+        inlineData: {
+          mimeType,
+          data: base64,
+        },
+      },
+      { text: CV_EXTRACTION_PROMPT },
+    ]);
+
+    const rawText = result.response.text();
+    let extracted;
+    try {
+      extracted = parseGeminiJson(rawText);
+    } catch {
+      return res.status(502).json({
+        success: false,
+        error: "Could not parse CV data from Gemini response",
+        raw: rawText,
+      });
+    }
+
+    res.json({
+      success: true,
+      data: {
+        fileName: req.file.originalname,
+        mimeType,
+        extracted,
+      },
+    });
+  } catch (err) {
+    const message =
+      err?.message ?? err?.response?.data?.error?.message ?? "CV extraction failed";
+    console.error("CV extract error:", message);
+    res.status(502).json({ success: false, error: String(message) });
+  }
+});
+
+app.get("/cv/profile", requireAuth, async (req, res) => {
+  const supabaseUser = getSupabaseAsUser(req.accessToken);
+  if (!supabaseUser) {
+    return res.status(503).json({
+      success: false,
+      error: "Database is not configured on the server",
+    });
+  }
+
+  const { data, error } = await findProfileForUser(
+    supabaseUser,
+    req.authUser.id
+  );
+
+  if (error) {
+    console.error("CV profile select error:", error.message);
+    return res.status(500).json({ success: false, error: error.message });
+  }
+
+  return res.json({
+    success: true,
+    data: formatProfileRow(data),
+  });
+});
+
+app.post("/cv/profile", requireAuth, async (req, res) => {
+  const supabaseUser = getSupabaseAsUser(req.accessToken);
+  if (!supabaseUser) {
+    return res.status(503).json({
+      success: false,
+      error: "Database is not configured on the server",
+    });
+  }
+
+  const payload = req.body?.extractedInformation ?? req.body?.extracted;
+  if (payload == null) {
+    return res.status(400).json({
+      success: false,
+      error: "Missing extractedInformation in request body",
+    });
+  }
+
+  const serialized =
+    typeof payload === "string" ? payload : JSON.stringify(payload);
+  const now = new Date().toISOString();
+  const userId = req.authUser.id;
+
+  const { data: existing, error: findError } = await findProfileForUser(
+    supabaseUser,
+    userId
+  );
+
+  if (findError) {
+    console.error("CV profile lookup error:", findError.message);
+    return res.status(500).json({ success: false, error: findError.message });
+  }
+
+  if (existing?.id) {
+    const { data, error } = await supabaseUser
+      .schema(JOBS_BOARD_SCHEMA)
+      .from(PROFILE_TABLE)
+      .update({
+        extractedInformation: serialized,
+        updated_at: now,
+        updated_by: userId,
+      })
+      .eq("id", existing.id)
+      .eq("created_by", userId)
+      .select(
+        "id, extractedInformation, created_at, updated_at, created_by, updated_by"
+      )
+      .single();
+
+    if (error) {
+      console.error("CV profile update error:", error.message);
+      return res.status(500).json({ success: false, error: error.message });
+    }
+
+    return res.json({ success: true, data: formatProfileRow(data) });
+  }
+
+  const { data, error } = await supabaseUser
+    .schema(JOBS_BOARD_SCHEMA)
+    .from(PROFILE_TABLE)
+    .insert({
+      extractedInformation: serialized,
+      created_by: userId,
+      created_at: now,
+      updated_at: now,
+      updated_by: userId,
+    })
+    .select(
+      "id, extractedInformation, created_at, updated_at, created_by, updated_by"
+    )
+    .single();
+
+  if (error) {
+    console.error("CV profile insert error:", error.message);
+    return res.status(500).json({ success: false, error: error.message });
+  }
+
+  return res.status(201).json({ success: true, data: formatProfileRow(data) });
+});
+
+app.put("/cv/profile", requireAuth, async (req, res) => {
+  const supabaseUser = getSupabaseAsUser(req.accessToken);
+  if (!supabaseUser) {
+    return res.status(503).json({
+      success: false,
+      error: "Database is not configured on the server",
+    });
+  }
+
+  const payload = req.body?.extractedInformation ?? req.body?.extracted;
+  if (payload == null) {
+    return res.status(400).json({
+      success: false,
+      error: "Missing extractedInformation in request body",
+    });
+  }
+
+  const serialized =
+    typeof payload === "string" ? payload : JSON.stringify(payload);
+  const now = new Date().toISOString();
+  const userId = req.authUser.id;
+
+  const { data: existing, error: findError } = await findProfileForUser(
+    supabaseUser,
+    userId
+  );
+
+  if (findError) {
+    console.error("CV profile lookup error:", findError.message);
+    return res.status(500).json({ success: false, error: findError.message });
+  }
+
+  if (!existing?.id) {
+    return res.status(404).json({
+      success: false,
+      error: "No saved CV profile found for this user",
+    });
+  }
+
+  const { data, error } = await supabaseUser
+    .schema(JOBS_BOARD_SCHEMA)
+    .from(PROFILE_TABLE)
+    .update({
+      extractedInformation: serialized,
+      updated_at: now,
+      updated_by: userId,
+    })
+    .eq("id", existing.id)
+    .eq("created_by", userId)
+    .select(
+      "id, extractedInformation, created_at, updated_at, created_by, updated_by"
+    )
+    .single();
+
+  if (error) {
+    console.error("CV profile update error:", error.message);
+    return res.status(500).json({ success: false, error: error.message });
+  }
+
+  return res.json({ success: true, data: formatProfileRow(data) });
+});
 
 /** Remotive is behind Cloudflare; default axios UA is often blocked (403). */
 const remotiveHttpConfig = {
@@ -479,6 +913,18 @@ app.get("/jsearch/job-details", async (req, res) => {
       typeof message === "string" ? message : JSON.stringify(message);
     res.status(status).json({ success: false, error: String(str) });
   }
+});
+
+app.use((err, req, res, next) => {
+  if (err instanceof multer.MulterError) {
+    if (err.code === "LIMIT_FILE_SIZE") {
+      return res
+        .status(400)
+        .json({ success: false, error: "File must be 5 MB or smaller." });
+    }
+    return res.status(400).json({ success: false, error: err.message });
+  }
+  next(err);
 });
 
 const server = app.listen(PORT, () => {
