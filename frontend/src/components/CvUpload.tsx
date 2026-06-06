@@ -43,7 +43,11 @@ function formatFileSize(bytes: number) {
     return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
 }
 
-export default function CvUpload() {
+type CvUploadProps = {
+    onCvUpdated?: (extracted: CvExtracted) => void
+}
+
+export default function CvUpload({ onCvUpdated }: CvUploadProps) {
     const navigate = useNavigate();
     const { user, loading: authLoading } = useAuth();
     const backendUrl = import.meta.env.VITE_BACKEND_URL as string | undefined;
@@ -67,7 +71,8 @@ export default function CvUpload() {
         setExtracted(pending.data.extracted);
         setUploadedName(pending.data.fileName);
         setSaveSuccess(false);
-    }, []);
+        onCvUpdated?.(pending.data.extracted);
+    }, [onCvUpdated]);
 
     useEffect(() => {
         if (authLoading || !user || !extractApiResponse || saving || saveSuccess) {
@@ -96,6 +101,7 @@ export default function CvUpload() {
             }
 
             setSaveSuccess(true);
+            onCvUpdated?.(apiPayload.data.extracted);
         }
 
         void resumePendingSave();
@@ -182,6 +188,7 @@ export default function CvUpload() {
             setUploadedName(response.data.data.fileName);
             setSaveSuccess(false);
             clearPendingCvExtract();
+            onCvUpdated?.(response.data.data.extracted);
         } catch (err) {
             const message =
                 axios.isAxiosError(err) &&
@@ -236,6 +243,9 @@ export default function CvUpload() {
         }
 
         setSaveSuccess(true);
+        if (extractApiResponse?.data?.extracted) {
+            onCvUpdated?.(extractApiResponse.data.extracted);
+        }
     };
 
     return (

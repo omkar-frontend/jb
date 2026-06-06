@@ -309,6 +309,18 @@ export default function Details() {
                                         }
                                     />
                                 </Field>
+                                <Field label="Designation">
+                                    <input
+                                        className={inputClass}
+                                        value={form.designation ?? ''}
+                                        onChange={(e) =>
+                                            updateForm({
+                                                designation: e.target.value || null,
+                                            })
+                                        }
+                                        placeholder="e.g. Software Developer"
+                                    />
+                                </Field>
                                 <Field label="Email">
                                     <input
                                         type="email"

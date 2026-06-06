@@ -20,6 +20,7 @@ export type CvExtracted = {
     email: string | null
     phone: string | null
     location: string | null
+    designation: string | null
     summary: string | null
     skills: string[]
     experience: CvExperience[]
@@ -41,6 +42,9 @@ export type CvExtractApiPayload = {
         extracted: CvExtracted
     }
 }
+
+/** Raw API shape may include legacy `role` alongside `designation`. */
+type RawCvExtracted = Partial<CvExtracted> & { role?: string | null }
 
 export type CvProfileRow = {
     id: string
@@ -80,14 +84,14 @@ export function clearPendingCvExtract() {
 }
 
 export function parseExtractedInformation(
-    raw: CvExtractApiPayload | string | unknown
+    input: CvExtractApiPayload | string | unknown
 ): CvExtractApiPayload | null {
-    if (raw == null) return null
+    if (input == null) return null
 
-    let parsed: unknown = raw
-    if (typeof raw === 'string') {
+    let parsed: unknown = input
+    if (typeof input === 'string') {
         try {
-            parsed = JSON.parse(raw)
+            parsed = JSON.parse(input)
         } catch {
             return null
         }
@@ -105,26 +109,29 @@ export function parseExtractedInformation(
     const payload = parsed as CvExtractApiPayload
     if (!payload.data?.extracted) return null
 
+    const extracted = payload.data.extracted as RawCvExtracted
+
     return {
         success: true,
         data: {
             fileName: payload.data.fileName ?? '',
             mimeType: payload.data.mimeType ?? '',
             extracted: {
-                fullName: payload.data.extracted.fullName ?? null,
-                email: payload.data.extracted.email ?? null,
-                phone: payload.data.extracted.phone ?? null,
-                location: payload.data.extracted.location ?? null,
-                summary: payload.data.extracted.summary ?? null,
-                skills: payload.data.extracted.skills ?? [],
-                experience: payload.data.extracted.experience ?? [],
-                education: payload.data.extracted.education ?? [],
-                languages: payload.data.extracted.languages ?? [],
+                fullName: extracted.fullName ?? null,
+                email: extracted.email ?? null,
+                phone: extracted.phone ?? null,
+                location: extracted.location ?? null,
+                designation: extracted.designation ?? extracted.role ?? null,
+                summary: extracted.summary ?? null,
+                skills: extracted.skills ?? [],
+                experience: extracted.experience ?? [],
+                education: extracted.education ?? [],
+                languages: extracted.languages ?? [],
                 links: {
-                    linkedin: payload.data.extracted.links?.linkedin ?? null,
-                    github: payload.data.extracted.links?.github ?? null,
-                    portfolio: payload.data.extracted.links?.portfolio ?? null,
-                    other: payload.data.extracted.links?.other ?? [],
+                    linkedin: extracted.links?.linkedin ?? null,
+                    github: extracted.links?.github ?? null,
+                    portfolio: extracted.links?.portfolio ?? null,
+                    other: extracted.links?.other ?? [],
                 },
             },
         },
