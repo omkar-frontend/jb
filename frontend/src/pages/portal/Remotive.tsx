@@ -390,7 +390,7 @@ export default function Remotive() {
                                     setCompanyName("");
                                     setLimitStr(String(DEFAULT_LIMIT));
                                 }}
-                                className="cursor-pointer rounded-lg border border-neutral-200 px-3 py-2 text-sm text-neutral-700 transition hover:border-neutral-300 hover:bg-neutral-50"
+                                className=" rounded-lg border border-neutral-200 px-3 py-2 text-sm text-neutral-700 transition hover:border-neutral-300 hover:bg-neutral-50"
                             >
                                 Clear filters
                             </button>

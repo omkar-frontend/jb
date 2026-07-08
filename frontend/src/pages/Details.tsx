@@ -203,14 +203,14 @@ export default function Details() {
     }
 
     return (
-        <div className="min-h-[calc(100dvh-8rem)] bg-white px-4 py-10 md:px-40">
-            <div className="mx-auto max-w-3xl">
-                <div className="mb-8 flex flex-wrap items-start justify-between gap-4">
+        <div className="min-h-[calc(100dvh-8rem)] bg-white w-full">
+            <div className=" w-full">
+                <div className="flex flex-wrap items-start lg:px-60 px-4 justify-between gap-4 sticky py-5 top-17.5 bg-white/80 backdrop-blur-sm z-10">
                     <div>
-                        <h1 className="text-2xl font-semibold text-neutral-900">
+                        <h1 className="text-base font-semibold text-neutral-900">
                             CV details
                         </h1>
-                        <p className="mt-1 text-sm text-neutral-600">
+                        <p className="mt-1 text-[13px] text-neutral-600">
                             View and edit information extracted from your resume
                         </p>
                     </div>
@@ -219,7 +219,7 @@ export default function Details() {
                             type="button"
                             onClick={() => void handleSave()}
                             disabled={saving}
-                            className="inline-flex items-center gap-2 rounded-lg bg-emerald-600 px-4 py-2 text-sm font-medium text-white hover:bg-emerald-700 disabled:cursor-not-allowed disabled:opacity-60"
+                            className="cmn-button"
                         >
                             {saving ? (
                                 <>
@@ -231,7 +231,6 @@ export default function Details() {
                                 </>
                             ) : (
                                 <>
-                                    <Save className="h-4 w-4" aria-hidden />
                                     Save changes
                                 </>
                             )}
@@ -240,26 +239,32 @@ export default function Details() {
                 </div>
 
                 {saveSuccess ? (
-                    <div className="mb-6 flex items-center gap-2 rounded-lg border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-800">
-                        <CheckCircle2 className="h-4 w-4 shrink-0" aria-hidden />
-                        Details saved successfully.
+                    <div className='lg:px-60 px-4'>
+                        <div className="mb-6 flex items-center gap-2 rounded-lg border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-800">
+                            <CheckCircle2 className="h-4 w-4 shrink-0" aria-hidden />
+                            Details saved successfully.
+                        </div>
                     </div>
                 ) : null}
 
                 {error ? (
-                    <div
-                        role="alert"
-                        className="mb-6 flex items-start gap-2 rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-800"
-                    >
-                        <AlertCircle className="mt-0.5 h-4 w-4 shrink-0" aria-hidden />
-                        <span>{error}</span>
+                    <div className='lg:px-60 px-4'>
+                        <div
+                            role="alert"
+                            className="mb-6 flex items-start gap-2 rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-800"
+                        >
+                            <AlertCircle className="mt-0.5 h-4 w-4 shrink-0" aria-hidden />
+                            <span>{error}</span>
+                        </div>
                     </div>
                 ) : null}
 
                 {authLoading || loading ? (
-                    <div className="flex items-center justify-center gap-2 rounded-xl border border-neutral-200 bg-neutral-50 py-16 text-neutral-600">
-                        <Loader2 className="h-5 w-5 animate-spin" aria-hidden />
-                        Loading details…
+                    <div className='lg:px-60 px-4'>
+                        <div className="flex items-center justify-center gap-2 rounded-xl border border-neutral-200 bg-neutral-50 py-16 text-neutral-600">
+                            <Loader2 className="h-5 w-5 animate-spin" aria-hidden />
+                            Loading details…
+                        </div>
                     </div>
                 ) : !form ? (
                     <div className="rounded-xl border border-neutral-200 bg-neutral-50 px-6 py-12 text-center">
@@ -269,14 +274,14 @@ export default function Details() {
                         </p>
                         <Link
                             to="/"
-                            className="mt-4 inline-block font-medium text-emerald-600 hover:text-emerald-700"
+                            className="mt-4 inline-block font-medium text-emerald-600 hover:text-emerald-700 cursor-default"
                         >
                             Go to home
                         </Link>
                     </div>
                 ) : (
                     <form
-                        className="space-y-6"
+                        className="space-y-6 px-4 pb-10 lg:px-60"
                         onSubmit={(e) => {
                             e.preventDefault()
                             void handleSave()
@@ -288,11 +293,6 @@ export default function Details() {
                                 <span className="font-medium text-neutral-700">
                                     {fileMeta.fileName}
                                 </span>
-                                {profileId ? (
-                                    <span className="ml-2 text-neutral-400">
-                                        · ID {profileId.slice(0, 8)}…
-                                    </span>
-                                ) : null}
                             </p>
                         ) : null}
 
@@ -768,29 +768,6 @@ export default function Details() {
                                 />
                             </Field>
                         </Section>
-
-                        <div className="flex justify-end pb-8">
-                            <button
-                                type="submit"
-                                disabled={saving}
-                                className="inline-flex items-center gap-2 rounded-lg bg-emerald-600 px-5 py-2.5 text-sm font-medium text-white hover:bg-emerald-700 disabled:cursor-not-allowed disabled:opacity-60"
-                            >
-                                {saving ? (
-                                    <>
-                                        <Loader2
-                                            className="h-4 w-4 animate-spin"
-                                            aria-hidden
-                                        />
-                                        Saving…
-                                    </>
-                                ) : (
-                                    <>
-                                        <Save className="h-4 w-4" aria-hidden />
-                                        Save changes
-                                    </>
-                                )}
-                            </button>
-                        </div>
                     </form>
                 )}
             </div>

@@ -1,12 +1,10 @@
-import { useEffect, useState } from 'react'
+import { useCallback, useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
-import { AlertCircle, Briefcase, Loader2 } from 'lucide-react'
+import { AlertCircle, Briefcase, Loader, Loader2, RefreshCcw } from 'lucide-react'
 import { useAuth } from '../context/AuthContext'
 import {
     getCvProfile,
-    parseExtractedInformation,
-    readPendingCvExtract,
-    type CvExtracted,
+    parseExtractedInformation
 } from '../lib/cvProfile'
 import {
     fetchRelevantJobs,
@@ -14,13 +12,9 @@ import {
     type RelevantJob,
 } from '../lib/relevantJobs'
 
-type RelevantJobsProps = {
-    extractedOverride?: CvExtracted | null
-}
-
 function JobCard({ job }: { job: RelevantJob }) {
     const cardClassName =
-        'block rounded-lg border border-neutral-200 bg-neutral-50/80 p-4 text-left transition-all duration-200 hover:border-emerald-400 hover:bg-white focus:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500/30 focus-visible:ring-offset-2'
+        'block rounded-lg border border-neutral-200 bg-neutral-50/80 p-4 text-left transition-all duration-200 hover:border-emerald-400 hover:bg-white focus:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500/30 focus-visible:ring-offset-2 cursor-default'
 
     const inner = (
         <div className="flex flex-col gap-3 sm:flex-row sm:items-start">
@@ -40,7 +34,7 @@ function JobCard({ job }: { job: RelevantJob }) {
             )}
             <div className="min-w-0 flex-1">
                 <div className="flex flex-wrap items-start justify-between gap-2">
-                    <p className="font-semibold text-neutral-900">{job.title}</p>
+                    <p className="font-semibold text-neutral-900 text-base">{job.title}</p>
                     <span className="shrink-0 rounded-full bg-neutral-100 px-2 py-0.5 text-xs font-medium text-neutral-600">
                         {job.sourceLabel}
                     </span>
@@ -75,7 +69,7 @@ function JobCard({ job }: { job: RelevantJob }) {
     return <div className={cardClassName}>{inner}</div>
 }
 
-export default function RelevantJobs({ extractedOverride }: RelevantJobsProps) {
+export default function RelevantJobs() {
     const { user, loading: authLoading } = useAuth()
     const [designation, setDesignation] = useState<string | null>(null)
     const [location, setLocation] = useState<string | null>(null)
@@ -84,13 +78,38 @@ export default function RelevantJobs({ extractedOverride }: RelevantJobsProps) {
     const [jobsLoading, setJobsLoading] = useState(false)
     const [jobsError, setJobsError] = useState<string | null>(null)
     const [failedSources, setFailedSources] = useState<string[]>([])
+    const [jobsRefreshKey, setJobsRefreshKey] = useState(0)
 
-    useEffect(() => {
-        if (extractedOverride?.designation?.trim()) {
-            setDesignation(extractedOverride.designation.trim())
-            setLocation(extractedOverride.location?.trim() || null)
+    const fetchProfile = useCallback(async () => {
+        try {
+            const { data, error } = await getCvProfile()
+            if (error || !data?.extractedInformation) {
+                return null
+            }
+            return parseExtractedInformation(data.extractedInformation)
+        } catch (error) {
+            console.error('Error fetching profile', error)
+            return null
         }
-    }, [extractedOverride])
+    }, [])
+
+    const applyProfile = useCallback((parsed: Awaited<ReturnType<typeof fetchProfile>>) => {
+        if (!parsed) {
+            setDesignation(null)
+            setLocation(null)
+            return
+        }
+
+        const extracted = parsed.data?.extracted
+        setDesignation(extracted?.designation?.trim() || null)
+        setLocation(extracted?.location?.trim() || null)
+    }, [])
+
+    const handleRefresh = useCallback(async () => {
+        const parsed = await fetchProfile()
+        applyProfile(parsed)
+        setJobsRefreshKey((key) => key + 1)
+    }, [fetchProfile, applyProfile])
 
     useEffect(() => {
         if (authLoading) return
@@ -102,47 +121,20 @@ export default function RelevantJobs({ extractedOverride }: RelevantJobsProps) {
             return
         }
 
-        if (extractedOverride?.designation?.trim()) {
-            setProfileLoading(false)
-            return
-        }
-
         let cancelled = false
 
         void (async () => {
             setProfileLoading(true)
-
-            const pending = readPendingCvExtract()
-            if (pending?.data?.extracted?.designation?.trim()) {
-                if (!cancelled) {
-                    setDesignation(pending.data.extracted.designation.trim())
-                    setLocation(pending.data.extracted.location?.trim() || null)
-                    setProfileLoading(false)
-                }
-                return
-            }
-
-            const { data, error } = await getCvProfile()
+            const parsed = await fetchProfile()
             if (cancelled) return
-
-            if (error || !data?.extractedInformation) {
-                setDesignation(null)
-                setLocation(null)
-                setProfileLoading(false)
-                return
-            }
-
-            const parsed = parseExtractedInformation(data.extractedInformation)
-            const extracted = parsed?.data?.extracted
-            setDesignation(extracted?.designation?.trim() || null)
-            setLocation(extracted?.location?.trim() || null)
+            applyProfile(parsed)
             setProfileLoading(false)
         })()
 
         return () => {
             cancelled = true
         }
-    }, [authLoading, user, extractedOverride])
+    }, [authLoading, user, fetchProfile, applyProfile])
 
     useEffect(() => {
         if (!designation || !isRelevantJobsConfigured()) {
@@ -192,13 +184,9 @@ export default function RelevantJobs({ extractedOverride }: RelevantJobsProps) {
         })()
 
         return () => ctrl.abort()
-    }, [designation, location])
+    }, [designation, location, jobsRefreshKey])
 
     if (authLoading || profileLoading) {
-        return null
-    }
-
-    if (!user || !designation) {
         return null
     }
 
@@ -206,16 +194,12 @@ export default function RelevantJobs({ extractedOverride }: RelevantJobsProps) {
         <section className="mb-8 rounded-2xl border border-neutral-200 bg-white p-5 shadow-sm md:p-6">
             <div className="mb-4 flex flex-wrap items-start justify-between gap-3">
                 <div>
-                    <div className="mb-1 flex items-center gap-2">
-                        <Briefcase
-                            className="h-5 w-5 text-emerald-600"
-                            aria-hidden
-                        />
-                        <h2 className="text-lg font-semibold text-neutral-900">
+                    <div className="lex items-center gap-2">
+                        <h2 className="text-base font-semibold text-neutral-900">
                             Relevant jobs
                         </h2>
                     </div>
-                    <p className="text-sm text-neutral-600">
+                    <p className="text-[13px] text-neutral-600">
                         Listings matched to your designation{' '}
                         <span className="font-medium text-neutral-800">
                             {designation}
@@ -231,18 +215,17 @@ export default function RelevantJobs({ extractedOverride }: RelevantJobsProps) {
                         ) : null}
                     </p>
                 </div>
-                <Link
-                    to="/details"
-                    className="text-sm font-medium text-emerald-600 hover:text-emerald-700"
-                >
-                    Edit profile
-                </Link>
+                {/* Refresh button */}
+                <button className="cmn-button-secondary" disabled={jobsLoading} onClick={handleRefresh}>
+                    <RefreshCcw className={`${jobsLoading ? 'animate-spin' : ''} h-4 w-4`} aria-hidden />
+                    {jobsLoading ? 'Refreshing' : 'Refresh'}
+                </button>
             </div>
 
             {jobsLoading ? (
-                <div className="flex items-center justify-center gap-2 rounded-xl border border-neutral-200 bg-neutral-50 py-12 text-neutral-600">
-                    <Loader2 className="h-5 w-5 animate-spin" aria-hidden />
-                    Searching job boards…
+                <div className="flex flex-col text-sm items-center justify-center gap-2 rounded-xl border border-neutral-200 bg-neutral-50 py-12 text-neutral-600">
+                    <Loader className="h-5 w-5 animate-spin" aria-hidden />
+                    Searching jobs
                 </div>
             ) : jobsError ? (
                 <div

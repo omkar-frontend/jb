@@ -477,7 +477,7 @@ export default function GoogleJobs() {
     const clearStaticFilter = () => setActiveStaticFilter(null);
 
     const filterPillClass = (key: StaticFilterKey) =>
-        `rounded-full border px-3 py-1 text-xs transition cursor-pointer ${
+        `rounded-full border px-3 py-1 text-xs transition  ${
             activeStaticFilter === key
                 ? "border-emerald-600 bg-emerald-50 text-emerald-900"
                 : "border-neutral-200 text-neutral-600 hover:border-neutral-300 hover:bg-neutral-50"
@@ -543,7 +543,7 @@ export default function GoogleJobs() {
                                     );
                                     clearStaticFilter();
                                 }}
-                                className="cursor-pointer rounded-lg border border-neutral-200 px-3 py-2 text-sm text-neutral-700 transition hover:border-neutral-300 hover:bg-neutral-50"
+                                className=" rounded-lg border border-neutral-200 px-3 py-2 text-sm text-neutral-700 transition hover:border-neutral-300 hover:bg-neutral-50"
                             >
                                 Reset search
                             </button>
@@ -607,7 +607,7 @@ export default function GoogleJobs() {
                             <button
                                 type="button"
                                 onClick={clearStaticFilter}
-                                className="mt-4 w-full cursor-pointer rounded border border-neutral-200 px-3 py-2 text-sm text-neutral-700 transition hover:border-neutral-300 hover:bg-neutral-50"
+                                className="mt-4 w-full  rounded border border-neutral-200 px-3 py-2 text-sm text-neutral-700 transition hover:border-neutral-300 hover:bg-neutral-50"
                             >
                                 Clear filter
                             </button>
@@ -645,7 +645,7 @@ export default function GoogleJobs() {
                                             )
                                         }
                                         disabled={!canGoPrev}
-                                        className="rounded-lg cursor-pointer border border-neutral-200 bg-white px-3 py-1 text-sm text-neutral-800 transition hover:bg-neutral-50 disabled:cursor-not-allowed disabled:opacity-40"
+                                        className="rounded-lg  border border-neutral-200 bg-white px-3 py-1 text-sm text-neutral-800 transition hover:bg-neutral-50 disabled:cursor-not-allowed disabled:opacity-40"
                                     >
                                         Previous
                                     </button>
@@ -653,7 +653,7 @@ export default function GoogleJobs() {
                                         type="button"
                                         onClick={() => setPageIndex((prev) => prev + 1)}
                                         disabled={!canGoNext}
-                                        className="rounded-lg cursor-pointer border border-neutral-200 bg-white px-3 py-1 text-sm text-neutral-800 transition hover:bg-neutral-50 disabled:cursor-not-allowed disabled:opacity-40"
+                                        className="rounded-lg  border border-neutral-200 bg-white px-3 py-1 text-sm text-neutral-800 transition hover:bg-neutral-50 disabled:cursor-not-allowed disabled:opacity-40"
                                     >
                                         Next
                                     </button>

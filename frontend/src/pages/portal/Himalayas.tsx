@@ -84,7 +84,7 @@ const selectControlStyles = {
 const selectStylesSingle = selectControlStyles as StylesConfig<Option, false>;
 
 const filterPillClass = (active: boolean) =>
-    `rounded-full border px-3 py-1 text-xs transition cursor-pointer ${
+    `rounded-full border px-3 py-1 text-xs transition  ${
         active
             ? "border-emerald-600 bg-emerald-50 text-emerald-900"
             : "border-neutral-200 text-neutral-600 hover:border-neutral-300 hover:bg-neutral-50"
@@ -504,7 +504,7 @@ export default function Himalayas() {
                             <button
                                 type="button"
                                 onClick={resetFilters}
-                                className="cursor-pointer rounded-lg border border-neutral-200 px-3 py-2 text-sm text-neutral-700 transition hover:border-neutral-300 hover:bg-neutral-50"
+                                className=" rounded-lg border border-neutral-200 px-3 py-2 text-sm text-neutral-700 transition hover:border-neutral-300 hover:bg-neutral-50"
                             >
                                 Clear filters
                             </button>
@@ -546,7 +546,7 @@ export default function Himalayas() {
                                             setPage((p) => Math.max(1, p - 1))
                                         }
                                         disabled={!canGoPrev}
-                                        className="cursor-pointer rounded-lg border border-neutral-200 bg-white px-3 py-1 text-sm text-neutral-800 transition hover:bg-neutral-50 disabled:cursor-not-allowed disabled:opacity-40"
+                                        className=" rounded-lg border border-neutral-200 bg-white px-3 py-1 text-sm text-neutral-800 transition hover:bg-neutral-50 disabled:cursor-not-allowed disabled:opacity-40"
                                     >
                                         Previous
                                     </button>
@@ -556,7 +556,7 @@ export default function Himalayas() {
                                             setPage((p) => p + 1)
                                         }
                                         disabled={!canGoNext}
-                                        className="cursor-pointer rounded-lg border border-neutral-200 bg-white px-3 py-1 text-sm text-neutral-800 transition hover:bg-neutral-50 disabled:cursor-not-allowed disabled:opacity-40"
+                                        className=" rounded-lg border border-neutral-200 bg-white px-3 py-1 text-sm text-neutral-800 transition hover:bg-neutral-50 disabled:cursor-not-allowed disabled:opacity-40"
                                     >
                                         Next
                                     </button>

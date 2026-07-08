@@ -453,7 +453,7 @@ export default function Adzuna() {
                                         setFullTimeOnly(false);
                                         setPartTimeOnly(false);
                                     }}
-                                    className="cursor-pointer rounded-lg border border-neutral-200 px-3 py-2 text-sm text-neutral-700 transition hover:border-neutral-300 hover:bg-neutral-50"
+                                    className=" rounded-lg border border-neutral-200 px-3 py-2 text-sm text-neutral-700 transition hover:border-neutral-300 hover:bg-neutral-50"
                                 >
                                     Clear filters
                                 </button>
@@ -492,7 +492,7 @@ export default function Adzuna() {
                                             type="button"
                                             onClick={() => setCurrentPage((prev) => prev - 1)}
                                             disabled={!canGoPrev}
-                                            className="cursor-pointer rounded-lg border border-neutral-200 bg-white px-3 py-1 text-sm text-neutral-800 transition hover:bg-neutral-50 disabled:cursor-not-allowed disabled:opacity-40"
+                                            className=" rounded-lg border border-neutral-200 bg-white px-3 py-1 text-sm text-neutral-800 transition hover:bg-neutral-50 disabled:cursor-not-allowed disabled:opacity-40"
                                         >
                                             Prev
                                         </button>
@@ -506,7 +506,7 @@ export default function Adzuna() {
                                             type="button"
                                             onClick={() => setCurrentPage((prev) => prev + 1)}
                                             disabled={!canGoNext}
-                                            className="cursor-pointer rounded-lg border border-neutral-200 bg-white px-3 py-1 text-sm text-neutral-800 transition hover:bg-neutral-50 disabled:cursor-not-allowed disabled:opacity-40"
+                                            className=" rounded-lg border border-neutral-200 bg-white px-3 py-1 text-sm text-neutral-800 transition hover:bg-neutral-50 disabled:cursor-not-allowed disabled:opacity-40"
                                         >
                                             Next
                                         </button>

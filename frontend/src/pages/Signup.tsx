@@ -65,7 +65,7 @@ export default function Signup() {
             footer={
                 <>
                     Already have an account?{' '}
-                    <Link to="/login" className="font-medium text-emerald-600 hover:text-emerald-700">
+                    <Link to="/login" className="font-medium text-emerald-600 hover:text-emerald-700 cursor-default">
                         Sign in
                     </Link>
                 </>

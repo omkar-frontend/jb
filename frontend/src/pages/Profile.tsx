@@ -104,7 +104,7 @@ export default function Profile() {
     }
 
     return (
-        <div className="min-h-[calc(100dvh-8rem)] bg-white px-4 py-10 md:px-40">
+        <div className="min-h-[calc(100dvh-8rem)] bg-white px-4 py-10 md:px-20">
             <div className="mx-auto max-w-2xl">
                 <div className="mb-8 flex items-center gap-4">
                     <div className="flex h-14 w-14 items-center justify-center rounded-full bg-emerald-100 text-emerald-700">
@@ -133,7 +133,7 @@ export default function Profile() {
                             <p>{error}</p>
                             <Link
                                 to="/login"
-                                className="mt-2 inline-block font-medium text-red-900 underline"
+                                className="mt-2 inline-block font-medium text-red-900 underline cursor-default"
                             >
                                 Sign in again
                             </Link>
