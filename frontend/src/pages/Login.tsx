@@ -60,7 +60,7 @@ export default function Login() {
         >
             <form onSubmit={(e) => void handleSubmit(e)} className="space-y-5">
                 <div>
-                    <label htmlFor="email" className="mb-1.5 block text-sm font-medium text-neutral-700">
+                    <label htmlFor="email" className="mb-1 block text-xs font-medium text-neutral-700">
                         Email
                     </label>
                     <input
@@ -70,12 +70,12 @@ export default function Login() {
                         required
                         value={email}
                         onChange={(e) => setEmail(e.target.value)}
-                        className="w-full rounded-lg border border-neutral-300 px-3 py-2 text-neutral-900 outline-none transition-colors focus:border-emerald-500 focus:ring-2 focus:ring-emerald-500/20"
+                        className="cmn-field"
                         placeholder="you@example.com"
                     />
                 </div>
                 <div>
-                    <label htmlFor="password" className="mb-1.5 block text-sm font-medium text-neutral-700">
+                    <label htmlFor="password" className="mb-1 block text-xs font-medium text-neutral-700">
                         Password
                     </label>
                     <input
@@ -85,7 +85,7 @@ export default function Login() {
                         required
                         value={password}
                         onChange={(e) => setPassword(e.target.value)}
-                        className="w-full rounded-lg border border-neutral-300 px-3 py-2 text-neutral-900 outline-none transition-colors focus:border-emerald-500 focus:ring-2 focus:ring-emerald-500/20"
+                        className="cmn-field"
                         placeholder="••••••••"
                     />
                 </div>
@@ -103,7 +103,7 @@ export default function Login() {
                 <button
                     type="submit"
                     disabled={loading || authLoading}
-                    className="flex w-full items-center justify-center gap-2 rounded-lg bg-emerald-600 px-4 py-2.5 text-sm font-medium text-white hover:bg-emerald-700 disabled:cursor-not-allowed disabled:opacity-60"
+                    className="flex w-full items-center justify-center gap-2 rounded-lg bg-emerald-600 px-4 py-2.5 text-sm font-medium text-white hover:bg-emerald-700 disabled:cursor-not-allowed disabled:opacity-60 transition-colors"
                 >
                     {loading ? (
                         <>

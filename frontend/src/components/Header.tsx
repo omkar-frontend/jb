@@ -42,7 +42,7 @@ export default function Header() {
                                     </AvatarFallback>
                                 </Avatar>
                             </PopoverTrigger>
-                            <PopoverContent align="end" className="w-48 p-1.5 *:transition-colors">
+                            <PopoverContent align="end" className="w-48 p-1.5 *:transition-colors mt-1">
                                 <Link
                                     to="/profile"
                                     onClick={() => setAccountMenuOpen(false)}

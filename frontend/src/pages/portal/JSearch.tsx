@@ -1,7 +1,10 @@
 import { useEffect, useState } from "react";
 import axios from "axios";
-import Select, { type StylesConfig } from "react-select";
+import Select from "react-select";
 import SubHeader from "../../components/SubHeader";
+import PortalJobCard from "../../components/PortalJobCard";
+import { Checkbox } from "@/components/ui/checkbox";
+import { selectStyles } from "../../lib/multiSelectStyles";
 
 const FILTER_DEBOUNCE_MS = 500;
 const JOBS_PER_PAGE_HINT = 10;
@@ -24,64 +27,6 @@ type Option = {
     value: string;
     label: string;
 };
-
-const selectControlStyles = {
-    control: (base: Record<string, unknown>, state: { isFocused: boolean }) => ({
-        ...base,
-        backgroundColor: "#ffffff",
-        borderColor: state.isFocused ? "#a3a3a3" : "#e5e5e5",
-        boxShadow: "none",
-        minHeight: "40px",
-        fontSize: "14px",
-        borderRadius: "8px",
-        ":hover": {
-            borderColor: "#d4d4d4",
-        },
-    }),
-    menu: (base: Record<string, unknown>) => ({
-        ...base,
-        backgroundColor: "#ffffff",
-        border: "1px solid #e5e5e5",
-        fontSize: "14px",
-        borderRadius: "8px",
-        boxShadow:
-            "0 4px 6px -1px rgb(0 0 0 / 0.07), 0 2px 4px -2px rgb(0 0 0 / 0.07)",
-    }),
-    option: (
-        base: Record<string, unknown>,
-        state: { isFocused: boolean },
-    ) => ({
-        ...base,
-        backgroundColor: state.isFocused ? "#f5f5f5" : "#ffffff",
-        color: "#171717",
-        fontSize: "14px",
-    }),
-    singleValue: (base: Record<string, unknown>) => ({
-        ...base,
-        color: "#171717",
-        fontSize: "14px",
-    }),
-    input: (base: Record<string, unknown>) => ({
-        ...base,
-        color: "#171717",
-        fontSize: "14px",
-    }),
-    placeholder: (base: Record<string, unknown>) => ({
-        ...base,
-        color: "#737373",
-        fontSize: "14px",
-    }),
-    dropdownIndicator: (base: Record<string, unknown>) => ({
-        ...base,
-        color: "#737373",
-    }),
-    indicatorSeparator: (base: Record<string, unknown>) => ({
-        ...base,
-        backgroundColor: "#e5e5e5",
-    }),
-};
-
-const selectStylesSingle = selectControlStyles as StylesConfig<Option, false>;
 
 const filterPillClass = (active: boolean) =>
     `rounded-full border px-3 py-1 text-xs transition  ${
@@ -153,9 +98,11 @@ const JOB_REQUIREMENTS: Option[] = [
     { value: "no_degree", label: "No degree" },
 ];
 
-function stripHtml(html: string): string {
-    return html.replace(/<[^>]*>/g, " ").replace(/\s+/g, " ").trim();
-}
+type JSearchApplyOption = {
+    apply_link?: string;
+    is_direct?: boolean;
+    publisher?: string;
+};
 
 type JSearchJob = {
     job_id?: string;
@@ -164,9 +111,10 @@ type JSearchJob = {
     employer_logo?: string;
     employer_website?: string;
     job_publisher?: string;
-    job_employment_type?: string;
+    job_employment_type?: string | null;
     job_employment_types?: string[];
     job_apply_link?: string;
+    apply_options?: JSearchApplyOption[];
     job_google_link?: string;
     job_description?: string;
     job_city?: string;
@@ -174,7 +122,66 @@ type JSearchJob = {
     job_country?: string;
     job_location?: string;
     job_is_remote?: boolean | null;
+    job_posted_at?: string | null;
+    job_salary?: string | null;
+    job_salary_string?: string | null;
+    job_min_salary?: number | null;
+    job_max_salary?: number | null;
+    job_salary_period?: string | null;
+    job_benefits_strings?: string[];
 };
+
+function formatJobType(job: JSearchJob): string | null {
+    const single = job.job_employment_type?.trim();
+    if (single) return single;
+    const types = (job.job_employment_types ?? [])
+        .map((t) => t.trim())
+        .filter(Boolean);
+    return types.length > 0 ? types.join(", ") : null;
+}
+
+function formatSalary(job: JSearchJob): string | null {
+    const labeled = job.job_salary_string?.trim() || job.job_salary?.trim();
+    if (labeled) return labeled;
+
+    const min = job.job_min_salary;
+    const max = job.job_max_salary;
+    if (min == null && max == null) return null;
+
+    const period = job.job_salary_period?.trim()
+        ? ` / ${job.job_salary_period.trim().toLowerCase()}`
+        : "";
+    if (min != null && max != null) {
+        return `${min.toLocaleString()} – ${max.toLocaleString()}${period}`;
+    }
+    if (min != null) return `From ${min.toLocaleString()}${period}`;
+    return `Up to ${max!.toLocaleString()}${period}`;
+}
+
+function applyLinksForJob(job: JSearchJob) {
+    const options = job.apply_options ?? [];
+    const pills = options
+        .map((opt) => {
+            const link = opt.apply_link?.trim();
+            if (!link) return null;
+            const title = opt.publisher?.trim() || "Apply";
+            return { title, link };
+        })
+        .filter((p): p is { title: string; link: string } => Boolean(p));
+
+    if (pills.length > 0) return pills;
+
+    const fallback = job.job_apply_link?.trim();
+    if (fallback) {
+        return [
+            {
+                title: job.job_publisher?.trim() || "Apply",
+                link: fallback,
+            },
+        ];
+    }
+    return [];
+}
 
 type JSearchSearchBody = {
     status?: string;
@@ -189,43 +196,12 @@ type SearchApiResponse = {
     data?: JSearchSearchBody;
 };
 
-function jobCardHref(job: JSearchJob): string {
+function jobCardHref(job: JSearchJob): string | null {
     const apply = job.job_apply_link?.trim();
     if (apply) return apply;
     const google = job.job_google_link?.trim();
     if (google) return google;
-    return "";
-}
-
-function JSearchCompanyAvatar({
-    logoSrc,
-    companyName,
-}: {
-    logoSrc: string | null;
-    companyName: string;
-}) {
-    const [imgFailed, setImgFailed] = useState(false);
-    const letter = (companyName.trim()[0] ?? "?").toUpperCase();
-
-    if (!logoSrc || imgFailed) {
-        return (
-            <div
-                className="flex h-10 w-10 shrink-0 items-center justify-center rounded-md border border-neutral-200 bg-neutral-200 text-sm font-semibold text-neutral-700"
-                aria-hidden
-            >
-                {letter}
-            </div>
-        );
-    }
-
-    return (
-        <img
-            src={logoSrc}
-            alt=""
-            className="h-10 w-10 shrink-0 rounded object-contain"
-            onError={() => setImgFailed(true)}
-        />
-    );
+    return null;
 }
 
 export default function JSearch() {
@@ -410,14 +386,14 @@ export default function JSearch() {
                 </div>
 
                 <div className="grid grid-cols-1 gap-3 lg:grid-cols-5">
-                    <div className="h-fit rounded-lg border border-neutral-200 bg-white p-4 shadow-sm lg:sticky lg:top-17">
+                    <div className="h-fit rounded-2xl border border-[#e6e6e6]/75 bg-white p-4 shadow-[0_1px_8px_rgba(0,0,0,0.05)] lg:sticky lg:top-20">
                         <div className="grid gap-3">
                             <input
                                 type="text"
                                 value={query}
                                 onChange={(e) => setQuery(e.target.value)}
                                 placeholder="Search query (title + location works best)"
-                                className="w-full rounded-lg border border-neutral-200 bg-white px-3 py-2 text-sm text-neutral-900 outline-none transition placeholder:text-neutral-400 focus:border-neutral-400"
+                                className="cmn-field"
                             />
                             <Select<Option, false>
                                 options={COUNTRY_OPTIONS}
@@ -426,7 +402,7 @@ export default function JSearch() {
                                 isClearable
                                 isSearchable
                                 placeholder="Country"
-                                styles={selectStylesSingle}
+                                styles={selectStyles}
                             />
                             <Select<Option, false>
                                 options={LANGUAGE_OPTIONS}
@@ -435,7 +411,7 @@ export default function JSearch() {
                                 isClearable
                                 isSearchable
                                 placeholder="Language (optional)"
-                                styles={selectStylesSingle}
+                                styles={selectStyles}
                             />
                             <Select<Option, false>
                                 options={DATE_POSTED_OPTIONS}
@@ -443,16 +419,15 @@ export default function JSearch() {
                                 onChange={(o) => setDatePosted(o)}
                                 isClearable={false}
                                 placeholder="Date posted"
-                                styles={selectStylesSingle}
+                                styles={selectStyles}
                             />
                             <label className="flex items-center gap-2 text-sm text-neutral-700">
-                                <input
-                                    type="checkbox"
+                                <Checkbox
                                     checked={remoteOnly}
-                                    onChange={(e) =>
-                                        setRemoteOnly(e.target.checked)
+                                    onCheckedChange={(checked) =>
+                                        setRemoteOnly(checked === true)
                                     }
-                                    className="h-4 w-4 rounded border border-neutral-300 accent-emerald-600"
+                                    className="border-neutral-300 data-checked:border-emerald-600 data-checked:bg-emerald-600 focus-visible:border-emerald-500 focus-visible:ring-emerald-500/20"
                                 />
                                 Remote / work from home only
                             </label>
@@ -514,7 +489,7 @@ export default function JSearch() {
                                 value={radiusKm}
                                 onChange={(e) => setRadiusKm(e.target.value)}
                                 placeholder="Radius from query location (km, optional)"
-                                className="w-full rounded-lg border border-neutral-200 bg-white px-3 py-2 text-sm text-neutral-900 outline-none transition placeholder:text-neutral-400 focus:border-neutral-400"
+                                className="cmn-field"
                             />
                             <input
                                 type="text"
@@ -523,7 +498,7 @@ export default function JSearch() {
                                     setExcludePublishers(e.target.value)
                                 }
                                 placeholder="Exclude publishers (comma-separated, optional)"
-                                className="w-full rounded-lg border border-neutral-200 bg-white px-3 py-2 text-sm text-neutral-900 outline-none transition placeholder:text-neutral-400 focus:border-neutral-400"
+                                className="cmn-field"
                             />
                             <button
                                 type="button"
@@ -536,7 +511,7 @@ export default function JSearch() {
                     </div>
 
                     <div className="flex flex-col gap-3 lg:col-span-4">
-                        <div className="sticky top-17 rounded-lg border border-neutral-200 bg-white p-4 shadow-sm">
+                        <div className="sticky top-20 rounded-2xl border border-[#e6e6e6]/75 bg-white p-4 shadow-[0_1px_8px_rgba(0,0,0,0.05)]">
                             <p className="text-sm text-neutral-600">
                                 Job search
                                 {debouncedQuery.trim()
@@ -592,12 +567,8 @@ export default function JSearch() {
                         </div>
 
                         {!loading && !error && jobs.length > 0 && (
-                            <div className="flex flex-col gap-3 rounded-lg border border-neutral-200 bg-white p-4 shadow-sm">
+                            <div className="flex flex-col gap-3 rounded-2xl border border-[#e6e6e6]/75 bg-white p-4 shadow-[0_1px_8px_rgba(0,0,0,0.05)]">
                                 {jobs.map((job, index) => {
-                                    const id =
-                                        job.job_id?.trim() ??
-                                        `row-${index}`;
-                                    const href = jobCardHref(job);
                                     const locParts = [
                                         job.job_city,
                                         job.job_state,
@@ -608,68 +579,33 @@ export default function JSearch() {
                                         (locParts.length > 0
                                             ? locParts.join(", ")
                                             : null);
-                                    const rawDesc = job.job_description?.trim();
-                                    const preview = rawDesc
-                                        ? stripHtml(rawDesc)
-                                        : "";
+                                    const applyLinks = applyLinksForJob(job);
+                                    const meta = [
+                                        job.job_is_remote === true
+                                            ? "Remote"
+                                            : null,
+                                    ].filter((m): m is string => Boolean(m));
 
-                                    const cardClassName =
-                                        "block rounded-lg border border-neutral-200 bg-neutral-50/80 p-4 text-left transition-all duration-200 hover:border-emerald-400 hover:bg-white focus:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500/30 focus-visible:ring-offset-2";
-
-                                    const inner = (
-                                        <div className="flex flex-col gap-3 sm:flex-row sm:items-start">
-                                            <JSearchCompanyAvatar
-                                                logoSrc={
-                                                    job.employer_logo?.trim() ||
-                                                    null
-                                                }
-                                                companyName={
-                                                    job.employer_name?.trim() ||
-                                                    "Company"
-                                                }
-                                            />
-                                            <div className="min-w-0 flex-1">
-                                                <p className="font-semibold text-neutral-900">
-                                                    {job.job_title?.trim() ||
-                                                        "Untitled role"}
-                                                </p>
-                                                <p className="text-sm text-neutral-600">
-                                                    {job.employer_name?.trim() ||
-                                                        "—"}
-                                                    {job.job_publisher
-                                                        ? ` · ${job.job_publisher}`
-                                                        : ""}
-                                                    {job.job_employment_type
-                                                        ? ` · ${job.job_employment_type}`
-                                                        : ""}
-                                                    {loc ? ` · ${loc}` : ""}
-                                                    {job.job_is_remote === true
-                                                        ? " · Remote"
-                                                        : ""}
-                                                </p>
-                                                {preview ? (
-                                                    <p className="mt-2 line-clamp-2 break-words text-sm leading-relaxed text-neutral-700">
-                                                        {preview}
-                                                    </p>
-                                                ) : null}
-                                            </div>
-                                        </div>
-                                    );
-
-                                    return href ? (
-                                        <a
-                                            key={id}
-                                            href={href}
-                                            target="_blank"
-                                            rel="noreferrer"
-                                            className={cardClassName}
-                                        >
-                                            {inner}
-                                        </a>
-                                    ) : (
-                                        <div key={id} className={cardClassName}>
-                                            {inner}
-                                        </div>
+                                    return (
+                                        <PortalJobCard
+                                            key={
+                                                job.job_id?.trim() ??
+                                                `row-${index}`
+                                            }
+                                            href={jobCardHref(job)}
+                                            title={job.job_title}
+                                            company={job.employer_name}
+                                            location={loc}
+                                            salary={formatSalary(job)}
+                                            description={job.job_description}
+                                            jobType={formatJobType(job)}
+                                            postedAt={job.job_posted_at}
+                                            logoUrl={job.employer_logo}
+                                            via={job.job_publisher}
+                                            tags={job.job_benefits_strings ?? []}
+                                            meta={meta}
+                                            applyLinks={applyLinks}
+                                        />
                                     );
                                 })}
                             </div>

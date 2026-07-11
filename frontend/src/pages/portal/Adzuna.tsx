@@ -1,8 +1,11 @@
 import { useEffect, useState } from "react";
 import axios from "axios";
 import moment from "moment";
-import Select, { type StylesConfig } from "react-select";
+import Select from "react-select";
 import SubHeader from "../../components/SubHeader";
+import PortalJobCard from "../../components/PortalJobCard";
+import { Checkbox } from "@/components/ui/checkbox";
+import { selectStyles } from "../../lib/multiSelectStyles";
 
 const ADZUNA_FIRST_PAGE = 1;
 const FILTER_DEBOUNCE_MS = 500;
@@ -24,64 +27,6 @@ const useDebouncedValue = <T,>(value: T, delayMs: number): T => {
 type CountryOption = {
     value: string;
     label: string;
-};
-
-type SharedSelectOption = {
-    value: string;
-    label: string;
-};
-
-const commonSelectStyles: StylesConfig<SharedSelectOption, false> = {
-    control: (base, state) => ({
-        ...base,
-        backgroundColor: "#ffffff",
-        borderColor: state.isFocused ? "#a3a3a3" : "#e5e5e5",
-        boxShadow: "none",
-        minHeight: "40px",
-        fontSize: "14px",
-        borderRadius: "8px",
-        ":hover": {
-            borderColor: "#d4d4d4",
-        },
-    }),
-    menu: (base) => ({
-        ...base,
-        backgroundColor: "#ffffff",
-        border: "1px solid #e5e5e5",
-        fontSize: "14px",
-        borderRadius: "8px",
-        boxShadow:
-            "0 4px 6px -1px rgb(0 0 0 / 0.07), 0 2px 4px -2px rgb(0 0 0 / 0.07)",
-    }),
-    option: (base, state) => ({
-        ...base,
-        backgroundColor: state.isFocused ? "#f5f5f5" : "#ffffff",
-        color: "#171717",
-        fontSize: "14px",
-    }),
-    singleValue: (base) => ({
-        ...base,
-        color: "#171717",
-        fontSize: "14px",
-    }),
-    input: (base) => ({
-        ...base,
-        color: "#171717",
-        fontSize: "14px",
-    }),
-    placeholder: (base) => ({
-        ...base,
-        color: "#737373",
-        fontSize: "14px",
-    }),
-    dropdownIndicator: (base) => ({
-        ...base,
-        color: "#737373",
-    }),
-    indicatorSeparator: (base) => ({
-        ...base,
-        backgroundColor: "#e5e5e5",
-    }),
 };
 
 const COUNTRY_OPTIONS: CountryOption[] = [
@@ -363,7 +308,7 @@ export default function Adzuna() {
                                 isClearable
                                 isSearchable
                                 placeholder="Select category"
-                                styles={commonSelectStyles}
+                                styles={selectStyles}
                             />
                         </div>
                     </div>
@@ -372,7 +317,7 @@ export default function Adzuna() {
                 {selectedCategory ? (
                     <div className="grid lg:grid-cols-5 grid-cols-1 gap-3">
                         {/* Filters */}
-                        <div className="h-fit rounded-lg border border-neutral-200 bg-white p-4 shadow-sm lg:sticky lg:top-17">
+                        <div className="h-fit rounded-2xl border border-[#e6e6e6]/75 bg-white p-4 shadow-[0_1px_8px_rgba(0,0,0,0.05)] lg:sticky lg:top-20">
                             <div className="grid lg:grid-cols-1 grid-cols-2 gap-3">
                                 <Select<CountryOption>
                                     options={COUNTRY_OPTIONS}
@@ -382,21 +327,21 @@ export default function Adzuna() {
                                     }}
                                     isSearchable
                                     placeholder="Select country"
-                                    styles={commonSelectStyles}
+                                    styles={selectStyles}
                                 />
                                 <input
                                     type="text"
                                     value={jobKeyword}
                                     onChange={(e) => setJobKeyword(e.target.value)}
                                     placeholder="Search job title (e.g. developer)"
-                                    className="w-full rounded-lg border border-neutral-200 bg-white px-3 py-2 text-sm text-neutral-900 outline-none transition placeholder:text-neutral-400 focus:border-neutral-400"
+                                    className="cmn-field"
                                 />
                                 <input
                                     type="text"
                                     value={jobLocation}
                                     onChange={(e) => setJobLocation(e.target.value)}
                                     placeholder="Location (where)"
-                                    className="w-full rounded-lg border border-neutral-200 bg-white px-3 py-2 text-sm text-neutral-900 outline-none transition placeholder:text-neutral-400 focus:border-neutral-400"
+                                    className="cmn-field"
                                 />
                                 <input
                                     type="number"
@@ -404,7 +349,7 @@ export default function Adzuna() {
                                     value={salaryMin}
                                     onChange={(e) => setSalaryMin(e.target.value)}
                                     placeholder="Min salary"
-                                    className="w-full rounded-lg border border-neutral-200 bg-white px-3 py-2 text-sm text-neutral-900 outline-none transition placeholder:text-neutral-400 focus:border-neutral-400"
+                                    className="cmn-field"
                                 />
                                 <input
                                     type="number"
@@ -412,7 +357,7 @@ export default function Adzuna() {
                                     value={salaryMax}
                                     onChange={(e) => setSalaryMax(e.target.value)}
                                     placeholder="Max salary"
-                                    className="w-full rounded-lg border border-neutral-200 bg-white px-3 py-2 text-sm text-neutral-900 outline-none transition placeholder:text-neutral-400 focus:border-neutral-400"
+                                    className="cmn-field"
                                 />
                             </div>
                             <div className="mt-3 grid lg:grid-cols-1 md:grid-cols-4 sm:grid-cols-2 gap-3">
@@ -422,23 +367,21 @@ export default function Adzuna() {
                                     value={maxDaysOld}
                                     onChange={(e) => setMaxDaysOld(e.target.value)}
                                     placeholder="Max days old"
-                                    className="w-full rounded-lg border border-neutral-200 bg-white px-3 py-2 text-sm text-neutral-900 outline-none transition placeholder:text-neutral-400 focus:border-neutral-400"
+                                    className="cmn-field"
                                 />
                                 <label className="flex items-center gap-2 text-sm text-neutral-700">
-                                    <input
-                                        type="checkbox"
+                                    <Checkbox
                                         checked={fullTimeOnly}
-                                        onChange={(e) => setFullTimeOnly(e.target.checked)}
-                                        className="h-4 w-4 rounded border border-neutral-300 accent-emerald-600"
+                                        onCheckedChange={(checked) => setFullTimeOnly(checked === true)}
+                                        className="border-neutral-300 data-checked:border-emerald-600 data-checked:bg-emerald-600 focus-visible:border-emerald-500 focus-visible:ring-emerald-500/20"
                                     />
                                     Full-time only
                                 </label>
                                 <label className="flex items-center gap-2 text-sm text-neutral-700">
-                                    <input
-                                        type="checkbox"
+                                    <Checkbox
                                         checked={partTimeOnly}
-                                        onChange={(e) => setPartTimeOnly(e.target.checked)}
-                                        className="h-4 w-4 rounded border border-neutral-300 accent-emerald-600"
+                                        onCheckedChange={(checked) => setPartTimeOnly(checked === true)}
+                                        className="border-neutral-300 data-checked:border-emerald-600 data-checked:bg-emerald-600 focus-visible:border-emerald-500 focus-visible:ring-emerald-500/20"
                                     />
                                     Part-time only
                                 </label>
@@ -461,7 +404,7 @@ export default function Adzuna() {
                         </div>
                         <div className="lg:col-span-4 col-span-1 flex flex-col gap-3">
                             {/* Job Count and Pagination */}
-                            <div className="sticky top-17 rounded-lg border border-neutral-200 bg-white p-4 shadow-sm">
+                            <div className="sticky top-20 rounded-2xl border border-[#e6e6e6]/75 bg-white p-4 shadow-[0_1px_8px_rgba(0,0,0,0.05)]">
                                 <p className="text-sm text-neutral-600">
                                     Jobs for{" "}
                                     <span className="text-neutral-900">
@@ -515,58 +458,28 @@ export default function Adzuna() {
                             </div>
                             {/* Jobs List */}
                             {!jobsLoading && !jobsError && jobsPayload?.results && (
-                                <div className="flex flex-col gap-3 rounded-lg border border-neutral-200 bg-white p-4 shadow-sm">
+                                <div className="flex flex-col gap-3 rounded-2xl border border-[#e6e6e6]/75 bg-white p-4 shadow-[0_1px_8px_rgba(0,0,0,0.05)]">
                                     {jobsPayload.results.map((job, i) => (
-                                        <a
+                                        <PortalJobCard
                                             key={job.id ?? `${job.title ?? "job"}-${i}`}
-                                            href={job.redirect_url ?? "#"}
-                                            target="_blank"
-                                            rel="noreferrer"
-                                            className="block rounded-lg border border-neutral-200 bg-neutral-50/80 p-4 transition-all duration-200 hover:border-emerald-400 hover:bg-white"
-                                        >
-                                            <div className="flex items-start justify-between gap-4">
-                                                <div className="flex-1">
-                                                    <h3 className="text-base font-semibold text-neutral-900">
-                                                        {job.title ?? "Untitled"}
-                                                    </h3>
-                                                    <p className="mt-1 text-sm text-neutral-600">
-                                                        {job.company?.display_name ??
-                                                            "Unknown company"}{" "}
-                                                        •{" "}
-                                                        {job.location?.display_name ??
-                                                            "Unknown location"}
-                                                    </p>
-                                                </div>
-                                                <p className="text-sm text-green-700">
-                                                    {job.salary_min != null &&
-                                                    job.salary_max != null
-                                                        ? `${Math.round(job.salary_min).toLocaleString()} - ${Math.round(job.salary_max).toLocaleString()}`
-                                                        : "Salary not listed"}
-                                                </p>
-                                            </div>
-                                            <p className="mt-2 text-sm text-neutral-600">
-                                                {job.description
-                                                    ? `${job.description.slice(0, 260)}${job.description.length > 260 ? "..." : ""}`
-                                                    : "No description"}
-                                            </p>
-                                            <div className="mt-3 flex flex-wrap gap-3 text-xs text-neutral-500">
-                                                <span>
-                                                    Type:{" "}
-                                                    {job.contract_time
-                                                        ? job.contract_time.replace(
-                                                            "_",
-                                                            " ",
-                                                        )
-                                                        : "N/A"}
-                                                </span>
-                                                <span>
-                                                    Posted:{" "}
-                                                    {job.created
-                                                        ? moment(job.created).fromNow()
-                                                        : "N/A"}
-                                                </span>
-                                            </div>
-                                        </a>
+                                            href={job.redirect_url}
+                                            title={job.title}
+                                            company={job.company?.display_name}
+                                            location={job.location?.display_name}
+                                            salary={
+                                                job.salary_min != null &&
+                                                job.salary_max != null
+                                                    ? `${Math.round(job.salary_min).toLocaleString()} - ${Math.round(job.salary_max).toLocaleString()}`
+                                                    : null
+                                            }
+                                            description={job.description}
+                                            jobType={job.contract_time}
+                                            postedAt={
+                                                job.created
+                                                    ? moment(job.created).fromNow()
+                                                    : null
+                                            }
+                                        />
                                     ))}
                                 </div>
                             )}

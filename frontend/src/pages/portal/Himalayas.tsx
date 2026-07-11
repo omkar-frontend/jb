@@ -1,8 +1,11 @@
 import { useEffect, useState } from "react";
 import axios from "axios";
 import moment from "moment";
-import Select, { type StylesConfig } from "react-select";
+import Select from "react-select";
 import SubHeader from "../../components/SubHeader";
+import PortalJobCard from "../../components/PortalJobCard";
+import { Checkbox } from "@/components/ui/checkbox";
+import { selectStyles } from "../../lib/multiSelectStyles";
 
 const FILTER_DEBOUNCE_MS = 500;
 
@@ -24,64 +27,6 @@ type Option = {
     value: string;
     label: string;
 };
-
-const selectControlStyles = {
-    control: (base: Record<string, unknown>, state: { isFocused: boolean }) => ({
-        ...base,
-        backgroundColor: "#ffffff",
-        borderColor: state.isFocused ? "#a3a3a3" : "#e5e5e5",
-        boxShadow: "none",
-        minHeight: "40px",
-        fontSize: "14px",
-        borderRadius: "8px",
-        ":hover": {
-            borderColor: "#d4d4d4",
-        },
-    }),
-    menu: (base: Record<string, unknown>) => ({
-        ...base,
-        backgroundColor: "#ffffff",
-        border: "1px solid #e5e5e5",
-        fontSize: "14px",
-        borderRadius: "8px",
-        boxShadow:
-            "0 4px 6px -1px rgb(0 0 0 / 0.07), 0 2px 4px -2px rgb(0 0 0 / 0.07)",
-    }),
-    option: (
-        base: Record<string, unknown>,
-        state: { isFocused: boolean },
-    ) => ({
-        ...base,
-        backgroundColor: state.isFocused ? "#f5f5f5" : "#ffffff",
-        color: "#171717",
-        fontSize: "14px",
-    }),
-    singleValue: (base: Record<string, unknown>) => ({
-        ...base,
-        color: "#171717",
-        fontSize: "14px",
-    }),
-    input: (base: Record<string, unknown>) => ({
-        ...base,
-        color: "#171717",
-        fontSize: "14px",
-    }),
-    placeholder: (base: Record<string, unknown>) => ({
-        ...base,
-        color: "#737373",
-        fontSize: "14px",
-    }),
-    dropdownIndicator: (base: Record<string, unknown>) => ({
-        ...base,
-        color: "#737373",
-    }),
-    indicatorSeparator: (base: Record<string, unknown>) => ({
-        ...base,
-        backgroundColor: "#e5e5e5",
-    }),
-};
-
-const selectStylesSingle = selectControlStyles as StylesConfig<Option, false>;
 
 const filterPillClass = (active: boolean) =>
     `rounded-full border px-3 py-1 text-xs transition  ${
@@ -141,21 +86,17 @@ const SORT_OPTIONS: Option[] = [
     { value: "jobs", label: "Most jobs per company" },
 ];
 
-function stripHtml(html: string): string {
-    return html.replace(/<[^>]*>/g, " ").replace(/\s+/g, " ").trim();
-}
-
-function formatPubDate(ts: number | undefined): string {
-    if (ts == null || Number.isNaN(ts)) return "N/A";
+function formatPubDate(ts: number | undefined): string | null {
+    if (ts == null || Number.isNaN(ts)) return null;
     const m = ts > 1e12 ? moment(ts) : moment.unix(ts);
-    return m.isValid() ? m.fromNow() : "N/A";
+    return m.isValid() ? m.fromNow() : null;
 }
 
 function salaryLine(
     min: number | null | undefined,
     max: number | null | undefined,
     currency: string | undefined,
-): string {
+): string | null {
     const cur = currency?.trim() || "";
     if (min != null && max != null) {
         const a = Math.round(min).toLocaleString();
@@ -170,7 +111,7 @@ function salaryLine(
         const b = Math.round(max).toLocaleString();
         return cur ? `Up to ${cur} ${b}` : `Up to ${b}`;
     }
-    return "Salary not listed";
+    return null;
 }
 
 type HimalayasJob = {
@@ -374,14 +315,14 @@ export default function Himalayas() {
                 </div>
 
                 <div className="grid grid-cols-1 gap-3 lg:grid-cols-5">
-                    <div className="h-fit rounded-lg border border-neutral-200 bg-white p-4 shadow-sm lg:sticky lg:top-17">
+                    <div className="h-fit rounded-2xl border border-[#e6e6e6]/75 bg-white p-4 shadow-[0_1px_8px_rgba(0,0,0,0.05)] lg:sticky lg:top-20">
                         <div className="grid gap-3">
                             <input
                                 type="text"
                                 value={keyword}
                                 onChange={(e) => setKeyword(e.target.value)}
                                 placeholder="Keywords (optional)"
-                                className="w-full text-no rounded-lg border border-neutral-200 bg-white px-3 py-2 text-sm text-neutral-900 outline-none transition placeholder:text-neutral-400 focus:border-neutral-400"
+                                className="cmn-field"
                             />
                             <Select<Option, false>
                                 options={COUNTRY_OPTIONS}
@@ -390,28 +331,26 @@ export default function Himalayas() {
                                 isClearable
                                 isSearchable
                                 placeholder="Country"
-                                styles={selectStylesSingle}
+                                styles={selectStyles}
                             />
                             <label className="flex items-center gap-2 text-sm text-neutral-700">
-                                <input
-                                    type="checkbox"
+                                <Checkbox
                                     checked={worldwideOnly}
-                                    onChange={(e) =>
-                                        setWorldwideOnly(e.target.checked)
+                                    onCheckedChange={(checked) =>
+                                        setWorldwideOnly(checked === true)
                                     }
-                                    className="h-4 w-4 rounded border border-neutral-300 accent-emerald-600"
+                                    className="border-neutral-300 data-checked:border-emerald-600 data-checked:bg-emerald-600 focus-visible:border-emerald-500 focus-visible:ring-emerald-500/20"
                                 />
                                 Worldwide-friendly only
                             </label>
                             {country != null ? (
                                 <label className="flex items-center gap-2 text-sm text-neutral-700">
-                                    <input
-                                        type="checkbox"
+                                    <Checkbox
                                         checked={excludeWorldwide}
-                                        onChange={(e) =>
-                                            setExcludeWorldwide(e.target.checked)
+                                        onCheckedChange={(checked) =>
+                                            setExcludeWorldwide(checked === true)
                                         }
-                                        className="h-4 w-4 rounded border border-neutral-300 accent-emerald-600"
+                                        className="border-neutral-300 data-checked:border-emerald-600 data-checked:bg-emerald-600 focus-visible:border-emerald-500 focus-visible:ring-emerald-500/20"
                                     />
                                     Exclude worldwide matches for this country
                                 </label>
@@ -473,14 +412,14 @@ export default function Himalayas() {
                                 value={companySlug}
                                 onChange={(e) => setCompanySlug(e.target.value)}
                                 placeholder="Company slug (e.g. linear)"
-                                className="w-full rounded-lg border border-neutral-200 bg-white px-3 py-2 text-sm text-neutral-900 outline-none transition placeholder:text-neutral-400 focus:border-neutral-400"
+                                className="cmn-field"
                             />
                             <input
                                 type="text"
                                 value={timezone}
                                 onChange={(e) => setTimezone(e.target.value)}
                                 placeholder="Timezone (e.g. UTC-5)"
-                                className="w-full rounded-lg border border-neutral-200 bg-white px-3 py-2 text-sm text-neutral-900 outline-none transition placeholder:text-neutral-400 focus:border-neutral-400"
+                                className="cmn-field"
                             />
                             <div className="border-t border-neutral-200 pt-4">
                                 <p className="text-xs font-medium uppercase tracking-wide text-neutral-500">
@@ -512,7 +451,7 @@ export default function Himalayas() {
                     </div>
 
                     <div className="flex flex-col gap-3 lg:col-span-4">
-                        <div className="sticky top-17 rounded-lg border border-neutral-200 bg-white p-4 shadow-sm">
+                        <div className="sticky top-20 rounded-2xl border border-[#e6e6e6]/75 bg-white p-4 shadow-[0_1px_8px_rgba(0,0,0,0.05)]">
                             <p className="text-sm text-neutral-600">
                                 Remote jobs
                                 {debouncedKeyword.trim()
@@ -565,119 +504,50 @@ export default function Himalayas() {
                         </div>
 
                         {!loading && !error && jobs.length > 0 && (
-                            <div className="flex flex-col gap-3 rounded-lg border border-neutral-200 bg-white p-4 shadow-sm">
-                                {jobs.map((job, index) => {
-                                    const rawSummary =
-                                        job.excerpt?.trim() ||
-                                        (job.description
-                                            ? stripHtml(job.description)
-                                            : "");
-                                    const truncated = rawSummary.length > 280;
-                                    const snippet = rawSummary.slice(0, 280);
-                                    const loc =
-                                        job.locationRestrictions?.join(", ") ??
-                                        "Location not specified";
-                                    const applyUrl =
-                                        job.applicationLink?.trim() ||
-                                        job.guid ||
-                                        "#";
-
-                                    return (
-                                        <a
-                                            key={
-                                                job.guid ??
-                                                `${job.title ?? "job"}-${index}`
-                                            }
-                                            href={applyUrl}
-                                            target="_blank"
-                                            rel="noreferrer"
-                                            className="block rounded-lg border border-neutral-200 bg-neutral-50/80 p-4 transition-all duration-200 hover:border-emerald-400 hover:bg-white"
-                                        >
-                                            <div className="flex flex-col gap-3 sm:flex-row sm:items-start">
-                                                {job.companyLogo ? (
-                                                    <img
-                                                        src={job.companyLogo}
-                                                        alt=""
-                                                        className="h-12 w-12 shrink-0 rounded-md border border-neutral-200 object-contain"
-                                                    />
-                                                ) : null}
-                                                <div className="min-w-0 flex-1">
-                                                    <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
-                                                        <div className="min-w-0">
-                                                            <h3 className="text-base font-semibold text-neutral-900">
-                                                                {job.title ??
-                                                                    "Untitled role"}
-                                                            </h3>
-                                                            <p className="mt-1 text-sm text-neutral-600">
-                                                                {job.companyName ??
-                                                                    "Company"}{" "}
-                                                                · {loc}
-                                                            </p>
-                                                        </div>
-                                                        <p className="shrink-0 text-sm text-green-700 sm:text-right">
-                                                            {salaryLine(
-                                                                job.minSalary,
-                                                                job.maxSalary,
-                                                                job.currency,
-                                                            )}
-                                                        </p>
-                                                    </div>
-                                                    <p className="mt-2 text-sm text-neutral-600">
-                                                        {snippet
-                                                            ? `${snippet}${truncated ? "…" : ""}`
-                                                            : "No summary"}
-                                                    </p>
-                                                    <div className="mt-3 flex flex-wrap gap-2 text-xs text-neutral-500">
-                                                        <span>
-                                                            Type:{" "}
-                                                            {job.employmentType ??
-                                                                "—"}
-                                                        </span>
-                                                        <span>
-                                                            Posted:{" "}
-                                                            {formatPubDate(
-                                                                job.pubDate,
-                                                            )}
-                                                        </span>
-                                                        {job.seniority &&
-                                                        job.seniority.length >
-                                                            0 ? (
-                                                            <span>
-                                                                {job.seniority.join(
-                                                                    ", ",
-                                                                )}
-                                                            </span>
-                                                        ) : null}
-                                                    </div>
-                                                    {job.categories &&
-                                                    job.categories.length >
-                                                        0 ? (
-                                                        <div className="mt-3 flex flex-wrap gap-2">
-                                                            {job.categories
-                                                                .slice(0, 8)
-                                                                .map((c) => (
-                                                                    <span
-                                                                        key={c}
-                                                                        className="rounded-full border border-neutral-200 bg-neutral-50 px-2 py-0.5 text-xs text-neutral-600"
-                                                                    >
-                                                                        {c.replace(
-                                                                            /-/g,
-                                                                            " ",
-                                                                        )}
-                                                                    </span>
-                                                                ))}
-                                                        </div>
-                                                    ) : null}
-                                                </div>
-                                            </div>
-                                        </a>
-                                    );
-                                })}
+                            <div className="flex flex-col gap-3 rounded-2xl border border-[#e6e6e6]/75 bg-white p-4 shadow-[0_1px_8px_rgba(0,0,0,0.05)]">
+                                {jobs.map((job, index) => (
+                                    <PortalJobCard
+                                        key={
+                                            job.guid ??
+                                            `${job.title ?? "job"}-${index}`
+                                        }
+                                        href={
+                                            job.applicationLink?.trim() ||
+                                            job.guid
+                                        }
+                                        title={job.title}
+                                        company={job.companyName}
+                                        location={
+                                            job.locationRestrictions?.join(
+                                                ", ",
+                                            ) ?? null
+                                        }
+                                        salary={salaryLine(
+                                            job.minSalary,
+                                            job.maxSalary,
+                                            job.currency,
+                                        )}
+                                        description={
+                                            job.excerpt?.trim() ||
+                                            job.description
+                                        }
+                                        jobType={job.employmentType}
+                                        postedAt={formatPubDate(job.pubDate)}
+                                        logoUrl={job.companyLogo}
+                                        meta={
+                                            job.seniority &&
+                                            job.seniority.length > 0
+                                                ? [job.seniority.join(", ")]
+                                                : []
+                                        }
+                                        tags={job.categories ?? []}
+                                    />
+                                ))}
                             </div>
                         )}
 
                         {!loading && !error && jobs.length === 0 && payload && (
-                            <div className="flex h-48 items-center justify-center rounded-lg border border-dashed border-neutral-200 bg-white text-sm text-neutral-600">
+                            <div className="flex h-48 items-center justify-center rounded-2xl border border-dashed border-[#e6e6e6]/75 bg-white text-sm text-neutral-600 shadow-[0_1px_8px_rgba(0,0,0,0.05)]">
                                 No jobs match these filters.
                             </div>
                         )}

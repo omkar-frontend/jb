@@ -33,6 +33,10 @@
     @apply inline-flex items-center gap-2 rounded-lg bg-emerald-600 px-4 py-2 text-[13px] font-medium text-white hover:bg-emerald-700 disabled:cursor-not-allowed disabled:opacity-60 transition-colors;
 }
 
+.cmn-field{
+    @apply w-full rounded-lg border border-neutral-200 px-3 py-2 text-neutral-900 outline-none focus:border-emerald-500 focus:ring-2 focus:ring-emerald-500/20 text-[13px] transition-all duration-200 ease-in-out;
+}
+
 @theme inline {
 
     --font-heading: var(--font-sans);

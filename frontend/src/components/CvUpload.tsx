@@ -6,10 +6,6 @@ import {
     CheckCircle2,
     FileText,
     Loader2,
-    Save,
-    Sparkles,
-    Upload,
-    X,
 } from "lucide-react";
 import {
     Tooltip,
@@ -266,7 +262,7 @@ export default function CvUpload({ onCvUpdated }: CvUploadProps) {
     };
 
     return (
-        <section className="rounded-2xl border border-neutral-200 bg-linear-to-br from-white to-emerald-50/40 shadow-sm p-4">
+        <section className="rounded-2xl border border-[#e6e6e6]/75 bg-linear-to-br from-white to-emerald-50/40 shadow-[0_1px_8px_rgba(0,0,0,0.05)] p-4">
             <div className="flex flex-col gap-4">
                 <div className="flex flex-wrap items-center justify-between gap-1">
                     <div>
@@ -432,7 +428,7 @@ function CvExtractedPreview({
 }) {
     return (
         <div className="space-y-4">
-            <div className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-emerald-200 bg-white px-4 py-3 sticky top-20 bg-white">
+            <div className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-emerald-200 bg-white px-4 py-3 sticky top-20">
                 <div>
                     <p className="text-xs text-neutral-500">Parsed from</p>
                     <p className="text-xs font-medium text-neutral-800">{fileName ?? "your CV"}</p>

@@ -1,14 +1,14 @@
 import { useEffect, useState, type ReactNode } from 'react'
 import {
     AlertCircle,
-    CheckCircle2,
     Loader2,
     Plus,
-    Save,
     Trash2,
 } from 'lucide-react'
-import { Link, Navigate } from 'react-router-dom'
+import { Navigate } from 'react-router-dom'
 import CreatableSelect from 'react-select/creatable'
+import { Back } from '../components/Back'
+import { FormSkeleton } from '../components/FormSkeleton'
 import { useAuth } from '../context/AuthContext'
 import {
     mergeLanguageOptions,
@@ -32,8 +32,7 @@ import {
     type CvExtracted,
 } from '../lib/cvProfile'
 
-const inputClass =
-    'w-full rounded-lg border border-neutral-300 px-3 py-2 text-sm text-neutral-900 outline-none transition-colors focus:border-emerald-500 focus:ring-2 focus:ring-emerald-500/20'
+const inputClass = 'cmn-field'
 
 function emptyExperience(): CvExperience {
     return {
@@ -47,6 +46,27 @@ function emptyExperience(): CvExperience {
 
 function emptyEducation(): CvEducation {
     return { degree: null, institution: null, year: null }
+}
+
+function emptyExtracted(): CvExtracted {
+    return {
+        fullName: null,
+        email: null,
+        phone: null,
+        location: null,
+        designation: null,
+        summary: null,
+        skills: [],
+        experience: [],
+        education: [],
+        languages: [],
+        links: {
+            linkedin: null,
+            github: null,
+            portfolio: null,
+            other: [],
+        },
+    }
 }
 
 function linesToList(value: string): string[] {
@@ -69,7 +89,7 @@ function Field({
 }) {
     return (
         <div>
-            <label className="mb-1.5 block text-sm font-medium text-neutral-700">
+            <label className="mb-1 block text-xs font-medium text-neutral-700">
                 {label}
             </label>
             {children}
@@ -87,11 +107,13 @@ function Section({
     children: ReactNode
 }) {
     return (
-        <section className="rounded-xl border border-neutral-200 bg-white p-5 shadow-sm md:p-6">
-            <h2 className="text-lg font-semibold text-neutral-900">{title}</h2>
-            {description ? (
-                <p className="mt-1 text-sm text-neutral-500">{description}</p>
-            ) : null}
+        <section className="rounded-2xl border border-[#e6e6e6]/75 bg-white p-3 md:p-4 shadow-[0_1px_8px_rgba(0,0,0,0.05)]">
+            <div className="flex flex-col gap-0">
+                <h2 className="text-base font-semibold text-neutral-900">{title}</h2>
+                {description ? (
+                    <p className="text-[13px] text-neutral-600">{description}</p>
+                ) : null}
+            </div>
             <div className="mt-4 space-y-4">{children}</div>
         </section>
     )
@@ -99,7 +121,6 @@ function Section({
 
 export default function Details() {
     const { user, loading: authLoading } = useAuth()
-    const [profileId, setProfileId] = useState<string | null>(null)
     const [fileMeta, setFileMeta] = useState({ fileName: '', mimeType: '' })
     const [form, setForm] = useState<CvExtracted | null>(null)
     const [loading, setLoading] = useState(true)
@@ -129,20 +150,22 @@ export default function Details() {
 
             if (!data?.extractedInformation) {
                 setHasProfile(false)
-                setForm(null)
+                setFileMeta({ fileName: '', mimeType: '' })
+                setForm(emptyExtracted())
                 setLoading(false)
                 return
             }
 
             const parsed = parseExtractedInformation(data.extractedInformation)
             if (!parsed) {
-                setError('Could not parse saved CV details.')
+                setError('Could not parse saved CV details. You can fill them in manually.')
+                setHasProfile(false)
+                setForm(emptyExtracted())
                 setLoading(false)
                 return
             }
 
             setHasProfile(true)
-            setProfileId(data.id)
             setFileMeta({
                 fileName: parsed.data.fileName,
                 mimeType: parsed.data.mimeType,
@@ -206,13 +229,16 @@ export default function Details() {
         <div className="min-h-[calc(100dvh-8rem)] bg-white w-full">
             <div className=" w-full">
                 <div className="flex flex-wrap items-start lg:px-60 px-4 justify-between gap-4 sticky py-5 top-17.5 bg-white/80 backdrop-blur-sm z-10">
-                    <div>
-                        <h1 className="text-base font-semibold text-neutral-900">
-                            CV details
-                        </h1>
-                        <p className="mt-1 text-[13px] text-neutral-600">
-                            View and edit information extracted from your resume
-                        </p>
+                    <div className="flex items-center gap-5">
+                        <Back />
+                        <div>
+                            <h1 className="text-base font-semibold text-neutral-900">
+                                CV details
+                            </h1>
+                            <p className="text-[13px] text-neutral-600">
+                                View and edit information
+                            </p>
+                        </div>
                     </div>
                     {form ? (
                         <button
@@ -241,7 +267,6 @@ export default function Details() {
                 {saveSuccess ? (
                     <div className='lg:px-60 px-4'>
                         <div className="mb-6 flex items-center gap-2 rounded-lg border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-800">
-                            <CheckCircle2 className="h-4 w-4 shrink-0" aria-hidden />
                             Details saved successfully.
                         </div>
                     </div>
@@ -260,26 +285,8 @@ export default function Details() {
                 ) : null}
 
                 {authLoading || loading ? (
-                    <div className='lg:px-60 px-4'>
-                        <div className="flex items-center justify-center gap-2 rounded-xl border border-neutral-200 bg-neutral-50 py-16 text-neutral-600">
-                            <Loader2 className="h-5 w-5 animate-spin" aria-hidden />
-                            Loading details…
-                        </div>
-                    </div>
-                ) : !form ? (
-                    <div className="rounded-xl border border-neutral-200 bg-neutral-50 px-6 py-12 text-center">
-                        <p className="text-neutral-700">
-                            No CV details saved yet. Upload and extract your CV on
-                            the home page first.
-                        </p>
-                        <Link
-                            to="/"
-                            className="mt-4 inline-block font-medium text-emerald-600 hover:text-emerald-700 cursor-default"
-                        >
-                            Go to home
-                        </Link>
-                    </div>
-                ) : (
+                    <FormSkeleton className="px-4 pb-10 lg:px-60" />
+                ) : form ? (
                     <form
                         className="space-y-6 px-4 pb-10 lg:px-60"
                         onSubmit={(e) => {
@@ -302,6 +309,7 @@ export default function Details() {
                                     <input
                                         className={inputClass}
                                         value={form.fullName ?? ''}
+                                        placeholder="e.g. John Doe"
                                         onChange={(e) =>
                                             updateForm({
                                                 fullName: e.target.value || null,
@@ -313,12 +321,12 @@ export default function Details() {
                                     <input
                                         className={inputClass}
                                         value={form.designation ?? ''}
+                                        placeholder="e.g. Software Developer"
                                         onChange={(e) =>
                                             updateForm({
                                                 designation: e.target.value || null,
                                             })
                                         }
-                                        placeholder="e.g. Software Developer"
                                     />
                                 </Field>
                                 <Field label="Email">
@@ -326,6 +334,7 @@ export default function Details() {
                                         type="email"
                                         className={inputClass}
                                         value={form.email ?? ''}
+                                        placeholder="e.g. john.doe@example.com"
                                         onChange={(e) =>
                                             updateForm({
                                                 email: e.target.value || null,
@@ -337,6 +346,7 @@ export default function Details() {
                                     <input
                                         className={inputClass}
                                         value={form.phone ?? ''}
+                                        placeholder="e.g. +1234567890"
                                         onChange={(e) =>
                                             updateForm({
                                                 phone: e.target.value || null,
@@ -348,6 +358,7 @@ export default function Details() {
                                     <input
                                         className={inputClass}
                                         value={form.location ?? ''}
+                                        placeholder="e.g. New York, NY"
                                         onChange={(e) =>
                                             updateForm({
                                                 location: e.target.value || null,
@@ -440,6 +451,7 @@ export default function Details() {
                                                 <input
                                                     className={inputClass}
                                                     value={job.title}
+                                                    placeholder="e.g. Senior Software Engineer"
                                                     onChange={(e) => {
                                                         const next = [
                                                             ...form.experience,
@@ -458,6 +470,7 @@ export default function Details() {
                                                 <input
                                                     className={inputClass}
                                                     value={job.company ?? ''}
+                                                    placeholder="e.g. Acme Inc."
                                                     onChange={(e) => {
                                                         const next = [
                                                             ...form.experience,
@@ -478,6 +491,7 @@ export default function Details() {
                                                 <input
                                                     className={inputClass}
                                                     value={job.startDate ?? ''}
+                                                    placeholder="e.g. Jan 2020"
                                                     onChange={(e) => {
                                                         const next = [
                                                             ...form.experience,
@@ -498,6 +512,7 @@ export default function Details() {
                                                 <input
                                                     className={inputClass}
                                                     value={job.endDate ?? ''}
+                                                    placeholder="e.g. Present"
                                                     onChange={(e) => {
                                                         const next = [
                                                             ...form.experience,
@@ -521,6 +536,7 @@ export default function Details() {
                                                     className={`${inputClass} resize-none`}
                                                     rows={6}
                                                     value={job.description ?? ''}
+                                                    placeholder="Key responsibilities and achievements"
                                                     onChange={(e) => {
                                                         const next = [
                                                             ...form.experience,
@@ -594,6 +610,7 @@ export default function Details() {
                                                 <input
                                                     className={inputClass}
                                                     value={edu.degree ?? ''}
+                                                    placeholder="e.g. B.S. Computer Science"
                                                     onChange={(e) => {
                                                         const next = [
                                                             ...form.education,
@@ -616,6 +633,7 @@ export default function Details() {
                                                     value={
                                                         edu.institution ?? ''
                                                     }
+                                                    placeholder="e.g. Stanford University"
                                                     onChange={(e) => {
                                                         const next = [
                                                             ...form.education,
@@ -636,6 +654,7 @@ export default function Details() {
                                                 <input
                                                     className={inputClass}
                                                     value={edu.year ?? ''}
+                                                    placeholder="e.g. 2016 – 2020"
                                                     onChange={(e) => {
                                                         const next = [
                                                             ...form.education,
@@ -708,6 +727,7 @@ export default function Details() {
                                     <input
                                         className={inputClass}
                                         value={form.links.linkedin ?? ''}
+                                        placeholder="e.g. https://linkedin.com"
                                         onChange={(e) =>
                                             updateForm({
                                                 links: {
@@ -723,6 +743,7 @@ export default function Details() {
                                     <input
                                         className={inputClass}
                                         value={form.links.github ?? ''}
+                                        placeholder="e.g. https://github.com"
                                         onChange={(e) =>
                                             updateForm({
                                                 links: {
@@ -738,6 +759,7 @@ export default function Details() {
                                     <input
                                         className={inputClass}
                                         value={form.links.portfolio ?? ''}
+                                        placeholder="e.g. https://your-portfolio.com"
                                         onChange={(e) =>
                                             updateForm({
                                                 links: {
@@ -755,6 +777,7 @@ export default function Details() {
                                     className={`${inputClass} resize-none`}
                                     rows={4}
                                     value={listToLines(form.links.other)}
+                                    placeholder="e.g. https://twitter.com"
                                     onChange={(e) =>
                                         updateForm({
                                             links: {
@@ -769,7 +792,7 @@ export default function Details() {
                             </Field>
                         </Section>
                     </form>
-                )}
+                ) : null}
             </div>
         </div>
     )

@@ -1,6 +1,5 @@
 import { useCallback, useEffect, useState } from 'react'
-import { Link } from 'react-router-dom'
-import { AlertCircle, Briefcase, Loader, Loader2, RefreshCcw } from 'lucide-react'
+import { AlertCircle, Loader, RefreshCcw } from 'lucide-react'
 import { useAuth } from '../context/AuthContext'
 import {
     getCvProfile,
@@ -190,8 +189,12 @@ export default function RelevantJobs() {
         return null
     }
 
+    if(!user){
+        return <div className="rounded-xl border border-neutral-200 bg-neutral-50 px-6 py-10 text-center text-sm text-neutral-600">Please login and save CV details to view relevant jobs</div>
+    }
+
     return (
-        <section className="mb-8 rounded-2xl border border-neutral-200 bg-white p-5 shadow-sm md:p-6">
+        <section className="mb-8 rounded-2xl border border-[#e6e6e6]/75 bg-white p-3 md:p-4 shadow-[0_1px_8px_rgba(0,0,0,0.05)]">
             <div className="mb-4 flex flex-wrap items-start justify-between gap-3">
                 <div>
                     <div className="lex items-center gap-2">
@@ -217,7 +220,7 @@ export default function RelevantJobs() {
                 </div>
                 {/* Refresh button */}
                 <button className="cmn-button-secondary" disabled={jobsLoading} onClick={handleRefresh}>
-                    <RefreshCcw className={`${jobsLoading ? 'animate-spin' : ''} h-4 w-4`} aria-hidden />
+                    <RefreshCcw className={`${jobsLoading ? 'animate-spin' : ''} h-3 w-3`} aria-hidden />
                     {jobsLoading ? 'Refreshing' : 'Refresh'}
                 </button>
             </div>
@@ -237,8 +240,7 @@ export default function RelevantJobs() {
                 </div>
             ) : jobs.length === 0 ? (
                 <div className="rounded-xl border border-neutral-200 bg-neutral-50 px-6 py-10 text-center text-sm text-neutral-600">
-                    No matching jobs found right now. Try updating your designation
-                    on the details page.
+                    No matching jobs found right now. Try updating your designation on the details page.
                 </div>
             ) : (
                 <div className="flex flex-col gap-3">
