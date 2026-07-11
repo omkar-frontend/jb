@@ -1,8 +1,10 @@
 import { useEffect, useState } from 'react'
 import axios from 'axios'
-import { AlertCircle, Loader2, User } from 'lucide-react'
+import { AlertCircle, Calendar, Clock, Mail } from 'lucide-react'
 import moment from 'moment'
 import { Link, Navigate } from 'react-router-dom'
+import { Back } from '../components/Back'
+import { FormSkeleton } from '../components/FormSkeleton'
 import { useAuth } from '../context/AuthContext'
 import { api, isApiConfigured } from '../lib/api'
 
@@ -27,17 +29,33 @@ type MeResponse = {
     error?: string
 }
 
-function formatDate(value: string | null) {
+/** Parse a UTC ISO timestamp and format it in the user's local timezone. */
+function formatLocalDate(value: string | null) {
     if (!value) return '—'
-    const m = moment(value)
+    const m = moment.utc(value).local()
     return m.isValid() ? m.format('MMM D, YYYY · h:mm A') : value
 }
 
-function ProfileField({ label, value }: { label: string; value: string }) {
+function ProfileRow({
+    icon: Icon,
+    label,
+    value,
+}: {
+    icon: typeof Mail
+    label: string
+    value: string
+}) {
     return (
-        <div className="border-b border-neutral-100 py-4 last:border-0">
-            <dt className="text-sm font-medium text-neutral-500">{label}</dt>
-            <dd className="mt-1 break-all text-neutral-900">{value}</dd>
+        <div className="flex items-start gap-3 border-b border-neutral-100 py-4 last:border-0 last:pb-0 first:pt-0">
+            <div className="mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-neutral-100 text-neutral-600">
+                <Icon className="h-4 w-4" aria-hidden />
+            </div>
+            <div className="min-w-0 flex-1">
+                <dt className="text-xs font-medium text-neutral-500">{label}</dt>
+                <dd className="mt-0.5 break-all text-sm font-medium text-neutral-900">
+                    {value}
+                </dd>
+            </div>
         </div>
     )
 }
@@ -104,79 +122,82 @@ export default function Profile() {
     }
 
     return (
-        <div className="min-h-[calc(100dvh-8rem)] bg-white px-4 py-10 md:px-40">
-            <div className="mx-auto max-w-2xl">
-                <div className="mb-8 flex items-center gap-4">
-                    <div className="flex h-14 w-14 items-center justify-center rounded-full bg-emerald-100 text-emerald-700">
-                        <User className="h-7 w-7" aria-hidden />
-                    </div>
-                    <div>
-                        <h1 className="text-2xl font-semibold text-neutral-900">Profile</h1>
-                        <p className="mt-1 text-sm text-neutral-600">
-                            Account details from the server (verified session)
-                        </p>
+        <div className="min-h-[calc(100dvh-8rem)] w-full bg-white">
+            <div className="w-full">
+                <div className="sticky top-17.5 z-10 flex flex-wrap items-start justify-between gap-4 bg-white/80 px-4 py-5 backdrop-blur-sm lg:px-60">
+                    <div className="flex items-center gap-5">
+                        <Back />
+                        <div>
+                            <h1 className="text-base font-semibold text-neutral-900">
+                                Profile
+                            </h1>
+                            <p className="text-[13px] text-neutral-600">
+                                Your account details
+                            </p>
+                        </div>
                     </div>
                 </div>
 
-                {authLoading || loading ? (
-                    <div className="flex items-center justify-center gap-2 rounded-xl border border-neutral-200 bg-neutral-50 py-16 text-neutral-600">
-                        <Loader2 className="h-5 w-5 animate-spin" aria-hidden />
-                        Loading profile…
-                    </div>
-                ) : error ? (
-                    <div
-                        role="alert"
-                        className="flex items-start gap-2 rounded-xl border border-red-200 bg-red-50 px-4 py-4 text-sm text-red-800"
-                    >
-                        <AlertCircle className="mt-0.5 h-4 w-4 shrink-0" aria-hidden />
-                        <div>
-                            <p>{error}</p>
-                            <Link
-                                to="/login"
-                                className="mt-2 inline-block font-medium text-red-900 underline"
-                            >
-                                Sign in again
-                            </Link>
+                {error ? (
+                    <div className="px-4 lg:px-60">
+                        <div
+                            role="alert"
+                            className="mb-6 flex items-start gap-2 rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-800"
+                        >
+                            <AlertCircle
+                                className="mt-0.5 h-4 w-4 shrink-0"
+                                aria-hidden
+                            />
+                            <div>
+                                <p>{error}</p>
+                                <Link
+                                    to="/login"
+                                    className="mt-2 inline-block font-medium text-red-900 underline"
+                                >
+                                    Sign in again
+                                </Link>
+                            </div>
                         </div>
                     </div>
-                ) : profile ? (
-                    <section className="rounded-xl border border-neutral-200 bg-white px-6 shadow-sm">
-                        <dl>
-                            <ProfileField label="Email" value={profile.email ?? '—'} />
-                            <ProfileField label="User ID" value={profile.id} />
-                            <ProfileField label="Role" value={profile.role ?? '—'} />
-                            <ProfileField
-                                label="Sign-in provider"
-                                value={profile.provider ?? '—'}
-                            />
-                            <ProfileField
-                                label="Email confirmed"
-                                value={formatDate(profile.emailConfirmedAt)}
-                            />
-                            <ProfileField
-                                label="Account created"
-                                value={formatDate(profile.createdAt)}
-                            />
-                            <ProfileField
-                                label="Last sign in"
-                                value={formatDate(profile.lastSignInAt)}
-                            />
-                            {profile.phone ? (
-                                <ProfileField label="Phone" value={profile.phone} />
-                            ) : null}
-                        </dl>
+                ) : null}
 
-                        {Object.keys(profile.metadata).length > 0 ? (
-                            <div className="border-t border-neutral-100 py-4">
-                                <h2 className="text-sm font-medium text-neutral-500">
-                                    Profile metadata
+                {authLoading || loading ? (
+                    <FormSkeleton
+                        className="px-4 pb-10 lg:px-60"
+                        sections={1}
+                        fields={3}
+                        showTextarea={false}
+                    />
+                ) : profile ? (
+                    <div className="space-y-6 px-4 pb-10 lg:px-60">
+                        <section className="rounded-2xl border border-[#e6e6e6]/75 bg-white p-3 shadow-[0_1px_8px_rgba(0,0,0,0.05)] md:p-4">
+                            <div className="flex flex-col gap-0">
+                                <h2 className="text-base font-semibold text-neutral-900">
+                                    Account
                                 </h2>
-                                <pre className="mt-2 overflow-x-auto rounded-lg bg-neutral-50 p-3 text-xs text-neutral-800">
-                                    {JSON.stringify(profile.metadata, null, 2)}
-                                </pre>
+                                <p className="text-[13px] text-neutral-600">
+                                    Email and activity timestamps
+                                </p>
                             </div>
-                        ) : null}
-                    </section>
+                            <dl className="mt-4">
+                                <ProfileRow
+                                    icon={Mail}
+                                    label="Email"
+                                    value={profile.email ?? '—'}
+                                />
+                                <ProfileRow
+                                    icon={Calendar}
+                                    label="Account created"
+                                    value={formatLocalDate(profile.createdAt)}
+                                />
+                                <ProfileRow
+                                    icon={Clock}
+                                    label="Last sign in"
+                                    value={formatLocalDate(profile.lastSignInAt)}
+                                />
+                            </dl>
+                        </section>
+                    </div>
                 ) : null}
             </div>
         </div>

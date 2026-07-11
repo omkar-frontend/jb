@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { Link, Navigate, useNavigate } from 'react-router-dom'
-import { AlertCircle, CheckCircle2, Loader2 } from 'lucide-react'
+import { AlertCircle, Loader } from 'lucide-react'
 import AuthLayout from '../components/AuthLayout'
 import { useAuth } from '../context/AuthContext'
 import { supabase } from '../lib/supabase'
@@ -56,6 +56,11 @@ export default function Signup() {
         setSuccessMessage(
             'Account created. Check your email for a confirmation link before signing in.'
         )
+
+        setTimeout(() => {
+            setSuccessMessage(null)
+            navigate('/login')
+        }, 5000)
     }
 
     return (
@@ -65,7 +70,7 @@ export default function Signup() {
             footer={
                 <>
                     Already have an account?{' '}
-                    <Link to="/login" className="font-medium text-emerald-600 hover:text-emerald-700">
+                    <Link to="/login" className="font-medium text-emerald-600 hover:text-emerald-700 cursor-default">
                         Sign in
                     </Link>
                 </>
@@ -73,7 +78,7 @@ export default function Signup() {
         >
             <form onSubmit={(e) => void handleSubmit(e)} className="space-y-5">
                 <div>
-                    <label htmlFor="email" className="mb-1.5 block text-sm font-medium text-neutral-700">
+                    <label htmlFor="email" className="mb-1 block text-xs font-medium text-neutral-700">
                         Email
                     </label>
                     <input
@@ -83,12 +88,12 @@ export default function Signup() {
                         required
                         value={email}
                         onChange={(e) => setEmail(e.target.value)}
-                        className="w-full rounded-lg border border-neutral-300 px-3 py-2 text-neutral-900 outline-none transition-colors focus:border-emerald-500 focus:ring-2 focus:ring-emerald-500/20"
+                        className="cmn-field"
                         placeholder="you@example.com"
                     />
                 </div>
                 <div>
-                    <label htmlFor="password" className="mb-1.5 block text-sm font-medium text-neutral-700">
+                    <label htmlFor="password" className="mb-1 block text-xs font-medium text-neutral-700">
                         Password
                     </label>
                     <input
@@ -99,14 +104,14 @@ export default function Signup() {
                         minLength={6}
                         value={password}
                         onChange={(e) => setPassword(e.target.value)}
-                        className="w-full rounded-lg border border-neutral-300 px-3 py-2 text-neutral-900 outline-none transition-colors focus:border-emerald-500 focus:ring-2 focus:ring-emerald-500/20"
+                        className="cmn-field"
                         placeholder="At least 6 characters"
                     />
                 </div>
                 <div>
                     <label
                         htmlFor="confirmPassword"
-                        className="mb-1.5 block text-sm font-medium text-neutral-700"
+                        className="mb-1 block text-xs font-medium text-neutral-700"
                     >
                         Confirm password
                     </label>
@@ -118,7 +123,7 @@ export default function Signup() {
                         minLength={6}
                         value={confirmPassword}
                         onChange={(e) => setConfirmPassword(e.target.value)}
-                        className="w-full rounded-lg border border-neutral-300 px-3 py-2 text-neutral-900 outline-none transition-colors focus:border-emerald-500 focus:ring-2 focus:ring-emerald-500/20"
+                        className="cmn-field"
                         placeholder="Repeat your password"
                     />
                 </div>
@@ -136,9 +141,8 @@ export default function Signup() {
                 {successMessage ? (
                     <div
                         role="status"
-                        className="flex items-start gap-2 rounded-lg border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-800"
+                        className="flex items-start gap-2 font-medium rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2 text-xs text-emerald-800"
                     >
-                        <CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0" aria-hidden />
                         <span>{successMessage}</span>
                     </div>
                 ) : null}
@@ -146,11 +150,11 @@ export default function Signup() {
                 <button
                     type="submit"
                     disabled={loading || authLoading}
-                    className="flex w-full items-center justify-center gap-2 rounded-lg bg-emerald-600 px-4 py-2.5 text-sm font-medium text-white hover:bg-emerald-700 disabled:cursor-not-allowed disabled:opacity-60"
+                    className="flex w-full items-center justify-center gap-2 rounded-lg bg-emerald-600 px-4 py-2.5 text-sm font-medium text-white hover:bg-emerald-700 disabled:cursor-not-allowed disabled:opacity-60 transition-colors"
                 >
                     {loading ? (
                         <>
-                            <Loader2 className="h-4 w-4 animate-spin" aria-hidden />
+                            <Loader className="h-4 w-4 animate-spin" aria-hidden />
                             Creating account…
                         </>
                     ) : (

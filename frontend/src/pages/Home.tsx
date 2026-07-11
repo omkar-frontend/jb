@@ -1,8 +1,6 @@
-import { useState } from "react";
 import { useNavigate } from "react-router-dom";
 import CvUpload from "../components/CvUpload";
 import RelevantJobs from "../components/RelevantJobs";
-import type { CvExtracted } from "../lib/cvProfile";
 import adzuna from '/logos/adzuna.png';
 import google from '/logos/google.png';
 import himalayas from '/logos/himalayas.ico';
@@ -62,36 +60,34 @@ const portals: {
 
 export default function Home() {
     const navigate = useNavigate();
-    const [extractedProfile, setExtractedProfile] = useState<CvExtracted | null>(
-        null,
-    );
 
     return (
         <div className="min-h-[calc(100dvh)] bg-white p-5 text-neutral-900 md:px-40 md:py-10">
-            <CvUpload
-                onCvUpdated={(extracted) => setExtractedProfile(extracted)}
-            />
-            <RelevantJobs extractedOverride={extractedProfile} />
-            <div className="grid grid-cols-1 gap-4 sm:grid-cols-3 lg:grid-cols-4">
-                {
-                    portals.map((portal) => (
-                        <div
-                            key={portal.key}
-                            className={`relative flex h-40 flex-col items-center justify-between gap-3 rounded-xl border border-neutral-200 bg-white p-4 transition-all duration-500 ${
-                                portal.comingSoon
-                                    ? 'cursor-not-allowed opacity-95'
-                                    : 'cursor-pointer hover:border-neutral-300 hover:ring-2 hover:ring-emerald-400'
-                            }`}
-                            onClick={() => {
-                                if (!portal.comingSoon) navigate(`/portal/${portal.key}`);
-                            }}
-                        >
-                            {portal.comingSoon ? (
-                                <span className="absolute right-1 top-1 rounded-md bg-neutral-700 px-2.5 py-0.5 text-[11px] font-medium uppercase tracking-wide text-white">
-                                    Coming soon
-                                </span>
-                            ) : null}
-                            <div className="flex flex-col gap-1 items-center">
+            <div className="flex flex-col gap-4">
+                <CvUpload />
+                {/* Relevant jobs */}
+                <RelevantJobs />
+                {/* Job portals */}
+                <div className="grid grid-cols-1 gap-4 sm:grid-cols-3 lg:grid-cols-4">
+                    {
+                        portals.map((portal) => (
+                            <div
+                                key={portal.key}
+                                className={`relative flex h-40 flex-col items-center justify-between gap-3 rounded-2xl border border-[#e6e6e6]/75 bg-white p-4 transition-all duration-500 ${
+                                    portal.comingSoon
+                                        ? 'cursor-not-allowed opacity-95'
+                                        : 'cursor-default hover:border-emerald-300 hover:ring-2 hover:ring-emerald-100'
+                                }`}
+                                onClick={() => {
+                                    if (!portal.comingSoon) navigate(`/portal/${portal.key}`);
+                                }}
+                            >
+                                {portal.comingSoon ? (
+                                    <span className="absolute right-1 top-1 rounded-full bg-neutral-400 px-2.5 py-0.5 text-[11px] font-medium uppercase tracking-wide text-white">
+                                        Coming soon
+                                    </span>
+                                ) : null}
+                                {/* Logo */}
                                 {portal.logo ? (
                                     <img
                                         src={portal.logo}
@@ -106,12 +102,15 @@ export default function Home() {
                                         {portal.name.charAt(0).toUpperCase()}
                                     </div>
                                 )}
-                                <p className="text-xl font-semibold text-neutral-800">{portal.name}</p>
+                                {/* Name and description */}
+                                <div className="flex flex-col items-center">
+                                    <p className="text-base font-semibold text-neutral-800">{portal.name}</p>
+                                    <p className="text-center text-sm text-neutral-600">{portal.description}</p>
+                                </div>
                             </div>
-                            <p className="text-center text-sm text-neutral-600">{portal.description}</p>
-                        </div>
-                    ))
-                }
+                        ))
+                    }
+                </div>
             </div>
         </div>
     )

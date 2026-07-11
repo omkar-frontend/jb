@@ -1,73 +1,16 @@
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import axios from "axios";
 import moment from "moment";
-import Select, { type StylesConfig } from "react-select";
+import Select from "react-select";
 import SubHeader from "../../components/SubHeader";
+import PortalJobCard from "../../components/PortalJobCard";
+import { selectStyles } from "../../lib/multiSelectStyles";
 
 const FILTER_DEBOUNCE_MS = 500;
 
 type LocationOption = {
     value: string;
     label: string;
-};
-
-type SharedSelectOption = {
-    value: string;
-    label: string;
-};
-
-/** Same styling as Adzuna country select */
-const commonSelectStyles: StylesConfig<SharedSelectOption, false> = {
-    control: (base, state) => ({
-        ...base,
-        backgroundColor: "#ffffff",
-        borderColor: state.isFocused ? "#a3a3a3" : "#e5e5e5",
-        boxShadow: "none",
-        minHeight: "40px",
-        fontSize: "14px",
-        borderRadius: "8px",
-        ":hover": {
-            borderColor: "#d4d4d4",
-        },
-    }),
-    menu: (base) => ({
-        ...base,
-        backgroundColor: "#ffffff",
-        border: "1px solid #e5e5e5",
-        fontSize: "14px",
-        borderRadius: "8px",
-        boxShadow:
-            "0 4px 6px -1px rgb(0 0 0 / 0.07), 0 2px 4px -2px rgb(0 0 0 / 0.07)",
-    }),
-    option: (base, state) => ({
-        ...base,
-        backgroundColor: state.isFocused ? "#f5f5f5" : "#ffffff",
-        color: "#171717",
-        fontSize: "14px",
-    }),
-    singleValue: (base) => ({
-        ...base,
-        color: "#171717",
-        fontSize: "14px",
-    }),
-    input: (base) => ({
-        ...base,
-        color: "#171717",
-        fontSize: "14px",
-    }),
-    placeholder: (base) => ({
-        ...base,
-        color: "#737373",
-        fontSize: "14px",
-    }),
-    dropdownIndicator: (base) => ({
-        ...base,
-        color: "#737373",
-    }),
-    indicatorSeparator: (base) => ({
-        ...base,
-        backgroundColor: "#e5e5e5",
-    }),
 };
 
 /** SerpAPI `location` uses full country names; order matches Adzuna */
@@ -477,7 +420,7 @@ export default function GoogleJobs() {
     const clearStaticFilter = () => setActiveStaticFilter(null);
 
     const filterPillClass = (key: StaticFilterKey) =>
-        `rounded-full border px-3 py-1 text-xs transition cursor-pointer ${
+        `rounded-full border px-3 py-1 text-xs transition  ${
             activeStaticFilter === key
                 ? "border-emerald-600 bg-emerald-50 text-emerald-900"
                 : "border-neutral-200 text-neutral-600 hover:border-neutral-300 hover:bg-neutral-50"
@@ -496,14 +439,14 @@ export default function GoogleJobs() {
                 </div>
 
                 <div className="grid lg:grid-cols-5 grid-cols-1 gap-3">
-                    <div className="h-fit rounded-lg border border-neutral-200 bg-white p-4 shadow-sm lg:sticky lg:top-17">
+                    <div className="h-fit rounded-2xl border border-[#e6e6e6]/75 bg-white p-4 shadow-[0_1px_8px_rgba(0,0,0,0.05)] lg:sticky lg:top-20">
                         <div className="grid gap-3">
                             <input
                                 type="text"
                                 value={jobKeyword}
                                 onChange={(e) => setJobKeyword(e.target.value)}
                                 placeholder="Job title or keywords"
-                                className="w-full rounded-lg border border-neutral-200 bg-white px-3 py-2 text-sm text-neutral-900 outline-none transition placeholder:text-neutral-400 focus:border-neutral-400"
+                                className="cmn-field"
                             />
                             <div>
                                 <Select<LocationOption>
@@ -514,12 +457,7 @@ export default function GoogleJobs() {
                                     }}
                                     isSearchable
                                     placeholder="Select country"
-                                    styles={
-                                        commonSelectStyles as StylesConfig<
-                                            LocationOption,
-                                            false
-                                        >
-                                    }
+                                    styles={selectStyles}
                                 />
                             </div>
                             {activeStaticFilter != null && (
@@ -543,7 +481,7 @@ export default function GoogleJobs() {
                                     );
                                     clearStaticFilter();
                                 }}
-                                className="cursor-pointer rounded-lg border border-neutral-200 px-3 py-2 text-sm text-neutral-700 transition hover:border-neutral-300 hover:bg-neutral-50"
+                                className=" rounded-lg border border-neutral-200 px-3 py-2 text-sm text-neutral-700 transition hover:border-neutral-300 hover:bg-neutral-50"
                             >
                                 Reset search
                             </button>
@@ -607,7 +545,7 @@ export default function GoogleJobs() {
                             <button
                                 type="button"
                                 onClick={clearStaticFilter}
-                                className="mt-4 w-full cursor-pointer rounded border border-neutral-200 px-3 py-2 text-sm text-neutral-700 transition hover:border-neutral-300 hover:bg-neutral-50"
+                                className="mt-4 w-full  rounded border border-neutral-200 px-3 py-2 text-sm text-neutral-700 transition hover:border-neutral-300 hover:bg-neutral-50"
                             >
                                 Clear filter
                             </button>
@@ -615,7 +553,7 @@ export default function GoogleJobs() {
                     </div>
 
                     <div className="lg:col-span-4 col-span-1 flex flex-col gap-3">
-                        <div className="sticky top-17 rounded-lg border border-neutral-200 bg-white p-4 shadow-sm">
+                        <div className="sticky top-20 rounded-2xl border border-[#e6e6e6]/75 bg-white p-4 shadow-[0_1px_8px_rgba(0,0,0,0.05)]">
                             <p className="text-sm text-neutral-600">
                                 {payload?.search_parameters?.q ?? effectiveQ}
                                 {" · "}
@@ -645,7 +583,7 @@ export default function GoogleJobs() {
                                             )
                                         }
                                         disabled={!canGoPrev}
-                                        className="rounded-lg cursor-pointer border border-neutral-200 bg-white px-3 py-1 text-sm text-neutral-800 transition hover:bg-neutral-50 disabled:cursor-not-allowed disabled:opacity-40"
+                                        className="rounded-lg  border border-neutral-200 bg-white px-3 py-1 text-sm text-neutral-800 transition hover:bg-neutral-50 disabled:cursor-not-allowed disabled:opacity-40"
                                     >
                                         Previous
                                     </button>
@@ -653,7 +591,7 @@ export default function GoogleJobs() {
                                         type="button"
                                         onClick={() => setPageIndex((prev) => prev + 1)}
                                         disabled={!canGoNext}
-                                        className="rounded-lg cursor-pointer border border-neutral-200 bg-white px-3 py-1 text-sm text-neutral-800 transition hover:bg-neutral-50 disabled:cursor-not-allowed disabled:opacity-40"
+                                        className="rounded-lg  border border-neutral-200 bg-white px-3 py-1 text-sm text-neutral-800 transition hover:bg-neutral-50 disabled:cursor-not-allowed disabled:opacity-40"
                                     >
                                         Next
                                     </button>
@@ -670,99 +608,27 @@ export default function GoogleJobs() {
                         </div>
 
                         {!loading && !error && payload?.jobs_results && (
-                            <div className="flex flex-col gap-3 rounded-lg border border-neutral-200 bg-white p-4 shadow-sm">
-                                {payload.jobs_results.map((job, index) => {
-                                    const salaryLine = getSalaryDisplay(job);
-                                    const extensionTags =
-                                        getExtensionTagsForPills(job);
-                                    const applyPills = getApplyPills(job);
-
-                                    return (
-                                        <div
-                                            key={
-                                                job.job_id ??
-                                                `${job.title ?? "job"}-${index}`
-                                            }
-                                            className="rounded-lg border border-neutral-200 bg-neutral-50/80 p-4 transition-all duration-200 hover:border-emerald-400 hover:bg-white"
-                                        >
-                                            <div className="flex flex-col gap-3 sm:flex-row sm:items-start">
-                                                {job.thumbnail ? (
-                                                    <img
-                                                        src={job.thumbnail}
-                                                        alt=""
-                                                        className="h-14 w-14 shrink-0 rounded-md border border-neutral-200 object-cover"
-                                                    />
-                                                ) : null}
-                                                <div className="min-w-0 flex-1">
-                                                    <div className="flex items-start justify-between gap-4">
-                                                        <div className="min-w-0 flex-1">
-                                                            <h3 className="text-base font-semibold text-neutral-900">
-                                                                {job.title ??
-                                                                    "Untitled role"}
-                                                            </h3>
-                                                            <p className="mt-1 text-sm text-neutral-600">
-                                                                {job.company_name ??
-                                                                    "Company not listed"}
-                                                                {" · "}
-                                                                {job.location ??
-                                                                    "Location not listed"}
-                                                            </p>
-                                                        </div>
-                                                        <p className="shrink-0 text-right text-sm text-green-700">
-                                                            {salaryLine ??
-                                                                "Salary not listed"}
-                                                        </p>
-                                                    </div>
-                                                    {job.via ? (
-                                                        <p className="mt-1 text-xs text-neutral-500">
-                                                            via {job.via}
-                                                        </p>
-                                                    ) : null}
-                                                    <p className="mt-2 text-sm text-neutral-600">
-                                                        {job.description
-                                                            ? `${job.description.slice(0, 280)}${job.description.length > 280 ? "…" : ""}`
-                                                            : "No description"}
-                                                    </p>
-                                                    {applyPills.length > 0 ? (
-                                                        <div className="mt-3 flex flex-wrap gap-2">
-                                                            {applyPills.map(
-                                                                (opt, i) => (
-                                                                    <a
-                                                                        key={`${opt.link}-${i}`}
-                                                                        href={
-                                                                            opt.link
-                                                                        }
-                                                                        target="_blank"
-                                                                        rel="noreferrer"
-                                                                        className="rounded-full border border-neutral-200 bg-white px-3 py-1 text-xs text-neutral-800 transition hover:border-neutral-300 hover:bg-neutral-50"
-                                                                    >
-                                                                        {opt.title}
-                                                                    </a>
-                                                                ),
-                                                            )}
-                                                        </div>
-                                                    ) : null}
-                                                    {extensionTags.length > 0 ? (
-                                                        <div className="mt-3 flex flex-wrap gap-2">
-                                                            {extensionTags.map(
-                                                                (tag) => (
-                                                                    <span
-                                                                        key={
-                                                                            tag
-                                                                        }
-                                                                        className="rounded-full border border-neutral-200 bg-neutral-50 px-2 py-0.5 text-xs text-neutral-600"
-                                                                    >
-                                                                        {tag}
-                                                                    </span>
-                                                                ),
-                                                            )}
-                                                        </div>
-                                                    ) : null}
-                                                </div>
-                                            </div>
-                                        </div>
-                                    );
-                                })}
+                            <div className="flex flex-col gap-3 rounded-2xl border border-[#e6e6e6]/75 bg-white p-4 shadow-[0_1px_8px_rgba(0,0,0,0.05)]">
+                                {payload.jobs_results.map((job, index) => (
+                                    <PortalJobCard
+                                        key={
+                                            job.job_id ??
+                                            `${job.title ?? "job"}-${index}`
+                                        }
+                                        title={job.title}
+                                        company={job.company_name}
+                                        location={job.location}
+                                        salary={getSalaryDisplay(job)}
+                                        description={job.description}
+                                        logoUrl={job.thumbnail}
+                                        via={job.via}
+                                        tags={getExtensionTagsForPills(job)}
+                                        applyLinks={getApplyPills(job)}
+                                        href={
+                                            job.source_link ?? job.share_link
+                                        }
+                                    />
+                                ))}
                             </div>
                         )}
                     </div>

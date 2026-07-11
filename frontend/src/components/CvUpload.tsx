@@ -5,12 +5,14 @@ import {
     AlertCircle,
     CheckCircle2,
     FileText,
-    Loader2,
-    Save,
-    Sparkles,
-    Upload,
-    X,
+    Loader,
 } from "lucide-react";
+import {
+    Tooltip,
+    TooltipContent,
+    TooltipProvider,
+    TooltipTrigger,
+} from "@/components/ui/tooltip";
 import { useAuth } from "../context/AuthContext";
 import {
     clearPendingCvExtract,
@@ -62,6 +64,23 @@ export default function CvUpload({ onCvUpdated }: CvUploadProps) {
     const [extractApiResponse, setExtractApiResponse] =
         useState<CvExtractApiPayload | null>(null);
     const [uploadedName, setUploadedName] = useState<string | null>(null);
+    const [profileSaved, setProfileSaved] = useState(false);
+    const onCvUpdatedRef = useRef(onCvUpdated);
+    onCvUpdatedRef.current = onCvUpdated;
+    const autoSaveAttemptedRef = useRef(false);
+
+    const dismissPreviewAfterSave = (savedExtracted: CvExtracted) => {
+        onCvUpdatedRef.current?.(savedExtracted);
+        setFile(null);
+        setExtracted(null);
+        setExtractApiResponse(null);
+        setUploadedName(null);
+        setSaveSuccess(false);
+        setSaving(false);
+        setProfileSaved(true);
+        autoSaveAttemptedRef.current = false;
+        if (inputRef.current) inputRef.current.value = "";
+    };
 
     useEffect(() => {
         const pending = readPendingCvExtract();
@@ -71,45 +90,37 @@ export default function CvUpload({ onCvUpdated }: CvUploadProps) {
         setExtracted(pending.data.extracted);
         setUploadedName(pending.data.fileName);
         setSaveSuccess(false);
-        onCvUpdated?.(pending.data.extracted);
-    }, [onCvUpdated]);
+        onCvUpdatedRef.current?.(pending.data.extracted);
+    }, []);
 
     useEffect(() => {
-        if (authLoading || !user || !extractApiResponse || saving || saveSuccess) {
+        if (authLoading || !user || !extractApiResponse || saveSuccess) {
             return;
         }
 
+        if (!readPendingCvExtract()) return;
+        if (autoSaveAttemptedRef.current) return;
+        autoSaveAttemptedRef.current = true;
+
         const apiPayload = extractApiResponse;
-        const pending = readPendingCvExtract();
-        if (!pending) return;
 
-        let cancelled = false;
-
-        async function resumePendingSave() {
+        void (async () => {
             setSaving(true);
             setError(null);
 
             const { error: saveError } = await saveCvExtractToProfile(apiPayload);
 
-            if (cancelled) return;
-
             setSaving(false);
 
             if (saveError) {
+                autoSaveAttemptedRef.current = false;
                 setError(saveError);
                 return;
             }
 
-            setSaveSuccess(true);
-            onCvUpdated?.(apiPayload.data.extracted);
-        }
-
-        void resumePendingSave();
-
-        return () => {
-            cancelled = true;
-        };
-    }, [authLoading, user, extractApiResponse, saving, saveSuccess]);
+            dismissPreviewAfterSave(apiPayload.data.extracted);
+        })();
+    }, [authLoading, user, extractApiResponse, saveSuccess]);
 
     const validateFile = (next: File): string | null => {
         if (next.size > MAX_MB * 1024 * 1024) {
@@ -129,6 +140,7 @@ export default function CvUpload({ onCvUpdated }: CvUploadProps) {
         setExtractApiResponse(null);
         setUploadedName(null);
         setSaveSuccess(false);
+        setProfileSaved(false);
         clearPendingCvExtract();
         if (!next) {
             setFile(null);
@@ -212,7 +224,9 @@ export default function CvUpload({ onCvUpdated }: CvUploadProps) {
         setExtractApiResponse(null);
         setUploadedName(null);
         setSaveSuccess(false);
+        setProfileSaved(false);
         setError(null);
+        autoSaveAttemptedRef.current = false;
         clearPendingCvExtract();
         if (inputRef.current) inputRef.current.value = "";
     };
@@ -242,145 +256,153 @@ export default function CvUpload({ onCvUpdated }: CvUploadProps) {
             return;
         }
 
-        setSaveSuccess(true);
         if (extractApiResponse?.data?.extracted) {
-            onCvUpdated?.(extractApiResponse.data.extracted);
+            dismissPreviewAfterSave(extractApiResponse.data.extracted);
         }
     };
 
     return (
-        <section className="mb-8 rounded-2xl border border-neutral-200 bg-gradient-to-br from-white to-emerald-50/40 p-5 shadow-sm md:p-6">
-            <div className="mb-4 flex flex-wrap items-start justify-between gap-3">
-                <div>
-                    <div className="mb-1 flex items-center gap-2">
-                        <Sparkles className="h-5 w-5 text-emerald-600" aria-hidden />
-                        <h2 className="text-lg font-semibold text-neutral-900">
-                            Upload your CV
-                        </h2>
-                    </div>
-                    <p className="max-w-xl text-sm text-neutral-600">
-                        We&apos;ll read your resume with Gemini and extract skills, experience,
-                        and contact details to personalize your job search.
-                    </p>
-                </div>
-                {extracted ? (
-                    <span className="inline-flex items-center gap-1.5 rounded-full bg-emerald-100 px-3 py-1 text-xs font-medium text-emerald-800">
-                        <CheckCircle2 className="h-3.5 w-3.5" aria-hidden />
-                        Profile ready
-                    </span>
-                ) : null}
-            </div>
-
-            {!extracted ? (
-                <>
-                    <div
-                        role="button"
-                        tabIndex={0}
-                        onKeyDown={(e) => {
-                            if (e.key === "Enter" || e.key === " ") inputRef.current?.click();
-                        }}
-                        onDragOver={(e) => {
-                            e.preventDefault();
-                            setDragOver(true);
-                        }}
-                        onDragLeave={() => setDragOver(false)}
-                        onDrop={onDrop}
-                        onClick={() => inputRef.current?.click()}
-                        className={`flex cursor-pointer flex-col items-center justify-center gap-3 rounded-xl border-2 border-dashed px-4 py-10 transition-colors ${
-                            dragOver
-                                ? "border-emerald-500 bg-emerald-50/80"
-                                : "border-neutral-300 bg-white hover:border-emerald-400 hover:bg-emerald-50/30"
-                        }`}
-                    >
-                        <div className="flex h-14 w-14 items-center justify-center rounded-full bg-emerald-100 text-emerald-700">
-                            <Upload className="h-7 w-7" aria-hidden />
+        <section className="rounded-2xl border border-[#e6e6e6]/75 bg-linear-to-br from-white to-emerald-50/40 shadow-[0_1px_8px_rgba(0,0,0,0.05)] p-4">
+            <div className="flex flex-col gap-4">
+                <div className="flex flex-wrap items-center justify-between gap-1">
+                    <div>
+                        <div className="mb-1 flex items-center gap-2">
+                            <h2 className="text-sm font-semibold text-neutral-900">
+                                Upload your CV
+                            </h2>
+                            {profileSaved ? (
+                                <span className="inline-flex items-center gap-1 rounded-full bg-emerald-100 px-2.5 py-0.5 text-[11px] font-medium text-emerald-800">
+                                    <CheckCircle2 className="h-3 w-3" aria-hidden />
+                                    Saved to profile
+                                </span>
+                            ) : null}
                         </div>
-                        <div className="text-center">
-                            <p className="font-medium text-neutral-800">
-                                Drag & drop your CV here, or click to browse
-                            </p>
-                            <p className="mt-1 text-sm text-neutral-500">
-                                PDF, DOC, DOCX, or TXT — up to {MAX_MB} MB
-                            </p>
-                        </div>
-                        <input
-                            ref={inputRef}
-                            type="file"
-                            accept={ACCEPT}
-                            className="hidden"
-                            onChange={(e) => pickFile(e.target.files?.[0] ?? null)}
-                        />
+                        <p className="text-xs text-neutral-600">
+                            {profileSaved
+                                ? "Your CV is saved. Browse relevant jobs below or upload a new one anytime."
+                                : "We'll read your resume with Gemini and extract skills, experience, and contact details to personalize your job search."}
+                        </p>
                     </div>
-
-                    {file ? (
-                        <div className="mt-4 flex flex-wrap items-center justify-between gap-3 rounded-lg border border-neutral-200 bg-white px-4 py-3">
-                            <div className="flex min-w-0 items-center gap-3">
-                                <FileText
-                                    className="h-8 w-8 shrink-0 text-emerald-600"
-                                    aria-hidden
-                                />
-                                <div className="min-w-0">
-                                    <p className="truncate font-medium text-neutral-800">
-                                        {file.name}
-                                    </p>
-                                    <p className="text-sm text-neutral-500">
-                                        {formatFileSize(file.size)}
-                                    </p>
-                                </div>
+                    {!extracted && !file ? (
+                        <div
+                            role="button"
+                            tabIndex={0}
+                            onKeyDown={(e) => {
+                                if (e.key === "Enter" || e.key === " ") inputRef.current?.click();
+                            }}
+                            onDragOver={(e) => {
+                                e.preventDefault();
+                                setDragOver(true);
+                            }}
+                            onDragLeave={() => setDragOver(false)}
+                            onDrop={onDrop}
+                            onClick={() => inputRef.current?.click()}
+                            className={` ${
+                                dragOver
+                                    ? "border-emerald-500 bg-emerald-50/80"
+                                    : "border-neutral-300 bg-white hover:border-emerald-400 hover:bg-emerald-50/30"
+                            }`}
+                        >
+                            <div className="text-center cursor-default">
+                                <TooltipProvider>
+                                    <Tooltip>
+                                        <TooltipTrigger
+                                            render={
+                                                <button type="button" className="cmn-button">
+                                                    Upload CV
+                                                </button>
+                                            }
+                                        />
+                                        <TooltipContent side="bottom" className="max-w-56 text-left">
+                                            <p className="mt-1 text-background/80">
+                                                PDF, TXT, DOC, or DOCX · max {MAX_MB} MB
+                                            </p>
+                                        </TooltipContent>
+                                    </Tooltip>
+                                </TooltipProvider>
                             </div>
-                            <div className="flex items-center gap-2">
-                                <button
-                                    type="button"
-                                    onClick={clearAll}
-                                    className="rounded-lg border border-neutral-200 px-3 py-2 text-sm font-medium text-neutral-700 hover:bg-neutral-50"
-                                    disabled={loading}
-                                >
-                                    Remove
-                                </button>
-                                <button
-                                    type="button"
-                                    onClick={() => void handleExtract()}
-                                    disabled={loading}
-                                    className="inline-flex items-center gap-2 rounded-lg bg-emerald-600 px-4 py-2 text-sm font-medium text-white hover:bg-emerald-700 disabled:cursor-not-allowed disabled:opacity-60"
-                                >
-                                    {loading ? (
-                                        <>
-                                            <Loader2
-                                                className="h-4 w-4 animate-spin"
-                                                aria-hidden
-                                            />
-                                            Extracting…
-                                        </>
-                                    ) : (
-                                        <>
-                                            <Sparkles className="h-4 w-4" aria-hidden />
-                                            Extract with Gemini
-                                        </>
-                                    )}
-                                </button>
-                            </div>
+                            <input
+                                ref={inputRef}
+                                type="file"
+                                accept={ACCEPT}
+                                className="hidden"
+                                onChange={(e) => pickFile(e.target.files?.[0] ?? null)}
+                            />
                         </div>
                     ) : null}
-                </>
-            ) : (
-                <CvExtractedPreview
-                    data={extracted}
-                    fileName={uploadedName}
-                    onClear={clearAll}
-                    onSave={() => void handleSave()}
-                    saving={saving}
-                    saveSuccess={saveSuccess}
-                    isLoggedIn={Boolean(user)}
-                />
-            )}
+                </div>
+
+                {!extracted ? (
+                    <>
+                        {file ? (
+                            <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-neutral-200 bg-white px-4 py-3">
+                                <div className="flex min-w-0 items-center gap-3">
+                                    <FileText
+                                        className="h-5 w-5 shrink-0 text-emerald-600"
+                                        aria-hidden
+                                    />
+                                    <div className="min-w-0">
+                                        <p className="truncate font-medium text-neutral-800 text-xs">
+                                            {file.name}
+                                        </p>
+                                        <p className="text-xs text-neutral-500">
+                                            {formatFileSize(file.size)}
+                                        </p>
+                                    </div>
+                                </div>
+                                <div className="flex items-center gap-2 justify-end">
+                                    <button
+                                        type="button"
+                                        onClick={clearAll}
+                                        className="cmn-button-secondary"
+                                        disabled={loading}
+                                    >
+                                        Remove
+                                    </button>
+                                    <button
+                                        type="button"
+                                        onClick={() => void handleExtract()}
+                                        disabled={loading}
+                                        className="cmn-button"
+                                    >
+                                        {loading ? (
+                                            <>
+                                                <Loader
+                                                    className="h-4 w-4 animate-spin"
+                                                    aria-hidden
+                                                />
+                                                Extracting…
+                                            </>
+                                        ) : (
+                                            <>
+                                                Extract
+                                            </>
+                                        )}
+                                    </button>
+                                </div>
+                            </div>
+                        ) : null}
+                    </>
+                ) : (
+                    <CvExtractedPreview
+                        data={extracted}
+                        fileName={uploadedName}
+                        onClear={clearAll}
+                        onSave={() => void handleSave()}
+                        saving={saving}
+                        saveSuccess={saveSuccess}
+                        isLoggedIn={Boolean(user)}
+                    />
+                )}
+            </div>
 
             {error ? (
                 <div
                     role="alert"
-                    className="mt-4 flex items-start gap-2 rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-800"
+                    className="mt-4 flex items-center gap-2 rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-[13px] text-red-800"
                 >
-                    <AlertCircle className="mt-0.5 h-4 w-4 shrink-0" aria-hidden />
-                    <span>{error}</span>
+                    <AlertCircle className="h-4 w-4 shrink-0" aria-hidden />
+                    <span>Failed to extract your CV. Please try again.</span>
                 </div>
             ) : null}
         </section>
@@ -406,10 +428,10 @@ function CvExtractedPreview({
 }) {
     return (
         <div className="space-y-4">
-            <div className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-emerald-200 bg-white px-4 py-3">
+            <div className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-emerald-200 bg-white px-4 py-3 sticky top-20">
                 <div>
-                    <p className="text-sm text-neutral-500">Parsed from</p>
-                    <p className="font-medium text-neutral-800">{fileName ?? "your CV"}</p>
+                    <p className="text-xs text-neutral-500">Parsed from</p>
+                    <p className="text-xs font-medium text-neutral-800">{fileName ?? "your CV"}</p>
                 </div>
                 <div className="flex flex-wrap items-center gap-2">
                     {saveSuccess ? (
@@ -422,16 +444,15 @@ function CvExtractedPreview({
                             type="button"
                             onClick={onSave}
                             disabled={saving}
-                            className="inline-flex items-center gap-2 rounded-lg bg-emerald-600 px-4 py-2 text-sm font-medium text-white hover:bg-emerald-700 disabled:cursor-not-allowed disabled:opacity-60"
+                            className="cmn-button"
                         >
                             {saving ? (
                                 <>
-                                    <Loader2 className="h-4 w-4 animate-spin" aria-hidden />
+                                    <Loader className="h-4 w-4 animate-spin" aria-hidden />
                                     Saving…
                                 </>
                             ) : (
                                 <>
-                                    <Save className="h-4 w-4" aria-hidden />
                                     {isLoggedIn ? "Save to profile" : "Sign in to save"}
                                 </>
                             )}
@@ -440,9 +461,8 @@ function CvExtractedPreview({
                     <button
                         type="button"
                         onClick={onClear}
-                        className="inline-flex items-center gap-1 rounded-lg border border-neutral-200 px-3 py-1.5 text-sm text-neutral-700 hover:bg-neutral-50"
+                        className="cmn-button-secondary"
                     >
-                        <X className="h-4 w-4" aria-hidden />
                         Upload another
                     </button>
                 </div>
@@ -450,7 +470,7 @@ function CvExtractedPreview({
 
             <div className="grid gap-4 md:grid-cols-2">
                 <div className="rounded-xl border border-neutral-200 bg-white p-4">
-                    <h3 className="mb-3 text-sm font-semibold uppercase tracking-wide text-neutral-500">
+                    <h3 className="mb-3 text-sm font-medium text-neutral-500">
                         Contact
                     </h3>
                     <dl className="space-y-2 text-sm">
@@ -483,7 +503,7 @@ function CvExtractedPreview({
 
                 {data.skills?.length ? (
                     <div className="rounded-xl border border-neutral-200 bg-white p-4">
-                        <h3 className="mb-3 text-sm font-semibold uppercase tracking-wide text-neutral-500">
+                        <h3 className="mb-3 text-sm font-medium text-neutral-500">
                             Skills
                         </h3>
                         <div className="flex flex-wrap gap-2">
@@ -502,7 +522,7 @@ function CvExtractedPreview({
 
             {data.summary ? (
                 <div className="rounded-xl border border-neutral-200 bg-white p-4">
-                    <h3 className="mb-2 text-sm font-semibold uppercase tracking-wide text-neutral-500">
+                    <h3 className="mb-2 text-sm font-medium text-neutral-500">
                         Summary
                     </h3>
                     <p className="text-sm leading-relaxed text-neutral-700">{data.summary}</p>
@@ -511,7 +531,7 @@ function CvExtractedPreview({
 
             {data.experience?.length ? (
                 <div className="rounded-xl border border-neutral-200 bg-white p-4">
-                    <h3 className="mb-3 text-sm font-semibold uppercase tracking-wide text-neutral-500">
+                    <h3 className="mb-3 text-sm font-medium text-neutral-500">
                         Experience
                     </h3>
                     <ul className="space-y-4">
@@ -542,7 +562,7 @@ function CvExtractedPreview({
 
             {data.education?.length ? (
                 <div className="rounded-xl border border-neutral-200 bg-white p-4">
-                    <h3 className="mb-3 text-sm font-semibold uppercase tracking-wide text-neutral-500">
+                    <h3 className="mb-3 text-sm font-medium text-neutral-500">
                         Education
                     </h3>
                     <ul className="space-y-2 text-sm">
