@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { Link, Navigate, useLocation, useNavigate } from 'react-router-dom'
-import { AlertCircle, Loader2 } from 'lucide-react'
+import { AlertCircle, Loader } from 'lucide-react'
 import AuthLayout from '../components/AuthLayout'
 import { useAuth } from '../context/AuthContext'
 import { supabase } from '../lib/supabase'
@@ -107,7 +107,7 @@ export default function Login() {
                 >
                     {loading ? (
                         <>
-                            <Loader2 className="h-4 w-4 animate-spin" aria-hidden />
+                            <Loader className="h-4 w-4 animate-spin" aria-hidden />
                             Signing in…
                         </>
                     ) : (

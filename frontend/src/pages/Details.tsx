@@ -1,7 +1,7 @@
 import { useEffect, useState, type ReactNode } from 'react'
 import {
     AlertCircle,
-    Loader2,
+    Loader,
     Plus,
     Trash2,
 } from 'lucide-react'
@@ -249,7 +249,7 @@ export default function Details() {
                         >
                             {saving ? (
                                 <>
-                                    <Loader2
+                                    <Loader
                                         className="h-4 w-4 animate-spin"
                                         aria-hidden
                                     />

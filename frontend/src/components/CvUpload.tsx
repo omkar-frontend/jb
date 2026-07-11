@@ -5,7 +5,7 @@ import {
     AlertCircle,
     CheckCircle2,
     FileText,
-    Loader2,
+    Loader,
 } from "lucide-react";
 import {
     Tooltip,
@@ -367,7 +367,7 @@ export default function CvUpload({ onCvUpdated }: CvUploadProps) {
                                     >
                                         {loading ? (
                                             <>
-                                                <Loader2
+                                                <Loader
                                                     className="h-4 w-4 animate-spin"
                                                     aria-hidden
                                                 />
@@ -448,7 +448,7 @@ function CvExtractedPreview({
                         >
                             {saving ? (
                                 <>
-                                    <Loader2 className="h-4 w-4 animate-spin" aria-hidden />
+                                    <Loader className="h-4 w-4 animate-spin" aria-hidden />
                                     Saving…
                                 </>
                             ) : (

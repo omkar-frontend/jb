@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { Link } from 'react-router-dom'
-import { FileText, Loader2, LogOut, User } from 'lucide-react'
+import { FileText, Loader, LogOut, User } from 'lucide-react'
 import { useAuth } from '../context/AuthContext'
 import { Avatar, AvatarFallback } from './ui/avatar'
 import { Popover, PopoverContent, PopoverTrigger } from './ui/popover'
@@ -21,7 +21,7 @@ export default function Header() {
 
             <nav className="flex items-center gap-4">
                 {loading ? (
-                    <Loader2 className="h-5 w-5 animate-spin text-neutral-400" aria-label="Loading" />
+                    <Loader className="h-5 w-5 animate-spin text-neutral-400" aria-label="Loading" />
                 ) : user ? (
                     <>
                         <Link
