@@ -7,6 +7,7 @@ import SubHeader from "../../components/SubHeader";
 import PortalJobCard from "../../components/PortalJobCard";
 import { Checkbox } from "@/components/ui/checkbox";
 import { selectStyles } from "../../lib/multiSelectStyles";
+import { usePageReset } from "../../hooks/usePageReset";
 
 const FILTER_DEBOUNCE_MS = 500;
 
@@ -159,7 +160,6 @@ export default function Himalayas() {
     const [companySlug, setCompanySlug] = useState("");
     const [timezone, setTimezone] = useState("");
     const [sort, setSort] = useState<string>("recent");
-    const [page, setPage] = useState(1);
 
     const [payload, setPayload] = useState<JobsBody | null>(null);
     const [loading, setLoading] = useState(false);
@@ -170,19 +170,19 @@ export default function Himalayas() {
     const debouncedTz = useDebouncedValue(timezone, FILTER_DEBOUNCE_MS);
 
 
-    useEffect(() => {
-        setPage(1);
-    }, [
+    const filterSignature = [
         debouncedKeyword,
         country,
         worldwideOnly,
         excludeWorldwide,
-        seniorities,
-        employmentTypes,
+        seniorities.join(","),
+        employmentTypes.join(","),
         debouncedCompany,
         debouncedTz,
         sort,
-    ]);
+    ].join("|");
+
+    const [page, setPage] = usePageReset(filterSignature, 1);
 
     useEffect(() => {
         const ctrl = new AbortController();

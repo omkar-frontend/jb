@@ -65,7 +65,11 @@ export default function CvUpload({ onCvUpdated }: CvUploadProps) {
     // this component's state while they authenticate in the dialog.
     const [saveAfterAuth, setSaveAfterAuth] = useState(false);
     const onCvUpdatedRef = useRef(onCvUpdated);
-    onCvUpdatedRef.current = onCvUpdated;
+    // Synced in an effect, not during render: mutating a ref while rendering is
+    // unsafe once React can render speculatively.
+    useEffect(() => {
+        onCvUpdatedRef.current = onCvUpdated;
+    }, [onCvUpdated]);
     const autoSaveAttemptedRef = useRef(false);
 
     const dismissPreviewAfterSave = (savedExtracted: CvExtracted) => {

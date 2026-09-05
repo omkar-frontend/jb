@@ -389,7 +389,8 @@ export async function fetchRelevantJobs(
     const sourceErrors: Partial<Record<JobSource, string>> = {}
 
     results.forEach((result, index) => {
-        const source = fetchers[index].source
+        const source = fetchers[index]?.source
+        if (!source) return
         if (result.status === 'fulfilled') {
             jobs.push(...result.value)
         } else {

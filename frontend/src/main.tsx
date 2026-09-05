@@ -8,6 +8,7 @@ import Profile from './pages/Profile'
 import Signup from './pages/Signup'
 import Portal from './pages/portal/Portal'
 import Details from './pages/Details'
+import NotFound from './pages/NotFound'
 import './index.css'
 
 const router = createBrowserRouter(
@@ -20,6 +21,7 @@ const router = createBrowserRouter(
                 <Route path='/profile' element={<Profile/>} />
                 <Route path='/details' element={<Details/>} />
                 <Route path='/portal/:portal' element={<Portal/>} />
+                <Route path='*' element={<NotFound/>} />
             </Route>
         </>
     )

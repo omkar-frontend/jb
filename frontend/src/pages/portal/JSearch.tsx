@@ -6,6 +6,7 @@ import SubHeader from "../../components/SubHeader";
 import PortalJobCard from "../../components/PortalJobCard";
 import { Checkbox } from "@/components/ui/checkbox";
 import { selectStyles } from "../../lib/multiSelectStyles";
+import { usePageReset } from "../../hooks/usePageReset";
 
 const FILTER_DEBOUNCE_MS = 500;
 const JOBS_PER_PAGE_HINT = 10;
@@ -207,7 +208,6 @@ function jobCardHref(job: JSearchJob): string | null {
 
 export default function JSearch() {
     const [query, setQuery] = useState("Software developer");
-    const [page, setPage] = useState(1);
     const [country, setCountry] = useState<Option | null>(
         COUNTRY_OPTIONS.find((c) => c.value === "us") ?? null,
     );
@@ -235,19 +235,19 @@ export default function JSearch() {
     );
 
 
-    useEffect(() => {
-        setPage(1);
-    }, [
+    const filterSignature = [
         debouncedQuery,
         country,
         language,
         datePosted,
         remoteOnly,
-        employmentSel,
-        requirementsSel,
+        employmentSel.join(","),
+        requirementsSel.join(","),
         debouncedRadius,
         debouncedExclude,
-    ]);
+    ].join("|");
+
+    const [page, setPage] = usePageReset(filterSignature, 1);
 
     useEffect(() => {
         const ctrl = new AbortController();

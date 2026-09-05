@@ -1069,8 +1069,6 @@ app.get("/jsearch/search", paidSearchLimiter, asyncHandler(async (req, res) => {
     params.query = "software developer jobs";
   }
 
-  console.log(params);
-
   try {
     const response = await axios.get(`${JSEARCH_BASE}/search`, {
       timeout: 30_000,

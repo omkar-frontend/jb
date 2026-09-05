@@ -1,4 +1,5 @@
 import { useParams } from "react-router-dom";
+import NotFound from "../NotFound";
 import Adzuna from "./Adzuna";
 import GoogleJobs from "./GoogleJobs";
 import Himalayas from "./Himalayas";
@@ -13,5 +14,12 @@ export default function Portal() {
     if (portal === "himalayas") return <Himalayas />;
     if (portal === "remotive") return <Remotive />;
     if (portal === "jsearch") return <JSearch />;
-    return null;
+
+    // Unknown slug — a bare null left a blank page under the header.
+    return (
+        <NotFound
+            title="Job portal not found"
+            description={`There is no job portal called "${portal}".`}
+        />
+    );
 }
