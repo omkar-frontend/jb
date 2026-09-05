@@ -1,11 +1,14 @@
 import { useEffect, useState } from "react";
 import axios from "axios";
+import { api } from "../../lib/api";
 import moment from "moment";
 import Select from "react-select";
 import SubHeader from "../../components/SubHeader";
 import PortalJobCard from "../../components/PortalJobCard";
 import { Checkbox } from "@/components/ui/checkbox";
 import { selectStyles } from "../../lib/multiSelectStyles";
+import { usePageReset } from "../../hooks/usePageReset";
+import InlineLoading from "../../components/InlineLoading";
 
 const FILTER_DEBOUNCE_MS = 500;
 
@@ -158,7 +161,6 @@ export default function Himalayas() {
     const [companySlug, setCompanySlug] = useState("");
     const [timezone, setTimezone] = useState("");
     const [sort, setSort] = useState<string>("recent");
-    const [page, setPage] = useState(1);
 
     const [payload, setPayload] = useState<JobsBody | null>(null);
     const [loading, setLoading] = useState(false);
@@ -168,21 +170,20 @@ export default function Himalayas() {
     const debouncedCompany = useDebouncedValue(companySlug, FILTER_DEBOUNCE_MS);
     const debouncedTz = useDebouncedValue(timezone, FILTER_DEBOUNCE_MS);
 
-    const backendUrl = import.meta.env.VITE_BACKEND_URL;
 
-    useEffect(() => {
-        setPage(1);
-    }, [
+    const filterSignature = [
         debouncedKeyword,
         country,
         worldwideOnly,
         excludeWorldwide,
-        seniorities,
-        employmentTypes,
+        seniorities.join(","),
+        employmentTypes.join(","),
         debouncedCompany,
         debouncedTz,
         sort,
-    ]);
+    ].join("|");
+
+    const [page, setPage] = usePageReset(filterSignature, 1);
 
     useEffect(() => {
         const ctrl = new AbortController();
@@ -215,8 +216,8 @@ export default function Himalayas() {
                 const tz = debouncedTz.trim();
                 if (tz) params.timezone = tz;
 
-                const response = await axios.get<ApiResponse>(
-                    `${backendUrl}/himalayas/jobs/search`,
+                const response = await api.get<ApiResponse>(
+                    `/himalayas/jobs/search`,
                     {
                         signal: ctrl.signal,
                         params,
@@ -246,7 +247,6 @@ export default function Himalayas() {
 
         return () => ctrl.abort();
     }, [
-        backendUrl,
         page,
         debouncedKeyword,
         country,
@@ -462,11 +462,7 @@ export default function Himalayas() {
                                     : ""}
                                 {worldwideOnly ? " · worldwide-friendly" : ""}
                             </p>
-                            {loading && (
-                                <p className="text-sm text-neutral-500">
-                                    Loading…
-                                </p>
-                            )}
+                            {loading && <InlineLoading />}
                             {!loading && error && (
                                 <p className="text-sm text-red-600">{error}</p>
                             )}

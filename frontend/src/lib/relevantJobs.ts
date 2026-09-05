@@ -1,6 +1,4 @@
-import axios from 'axios'
-
-const backendUrl = import.meta.env.VITE_BACKEND_URL as string | undefined
+import { api, isApiConfigured } from './api'
 
 export const JOBS_PER_SOURCE = 5
 
@@ -80,7 +78,7 @@ async function fetchAdzunaJobs(
     location: string | null,
     signal?: AbortSignal
 ): Promise<RelevantJob[]> {
-    const response = await axios.get<
+    const response = await api.get<
         ApiEnvelope<{
             results?: Array<{
                 id?: string
@@ -92,7 +90,7 @@ async function fetchAdzunaJobs(
                 description?: string
             }>
         }>
-    >(`${backendUrl}/adzuna/jobs/gb/search/1`, {
+    >('/adzuna/jobs/gb/search/1', {
         signal,
         params: {
             what: designation,
@@ -126,7 +124,7 @@ async function fetchSerpJobs(
     location: string | null,
     signal?: AbortSignal
 ): Promise<RelevantJob[]> {
-    const response = await axios.get<
+    const response = await api.get<
         ApiEnvelope<{
             jobs_results?: Array<{
                 job_id?: string
@@ -143,7 +141,7 @@ async function fetchSerpJobs(
                 extensions?: string[]
             }>
         }>
-    >(`${backendUrl}/serp/jobs`, {
+    >('/serp/jobs', {
         signal,
         params: {
             q: designation,
@@ -179,7 +177,7 @@ async function fetchRemotiveJobs(
     designation: string,
     signal?: AbortSignal
 ): Promise<RelevantJob[]> {
-    const response = await axios.get<
+    const response = await api.get<
         ApiEnvelope<{
             jobs?: Array<{
                 id?: number
@@ -194,7 +192,7 @@ async function fetchRemotiveJobs(
                 description?: string
             }>
         }>
-    >(`${backendUrl}/remotive/remote-jobs`, {
+    >('/remotive/remote-jobs', {
         signal,
         params: {
             search: designation,
@@ -231,7 +229,7 @@ async function fetchHimalayasJobs(
     designation: string,
     signal?: AbortSignal
 ): Promise<RelevantJob[]> {
-    const response = await axios.get<
+    const response = await api.get<
         ApiEnvelope<{
             jobs?: Array<{
                 title?: string
@@ -245,7 +243,7 @@ async function fetchHimalayasJobs(
                 guid?: string
             }>
         }>
-    >(`${backendUrl}/himalayas/jobs/search`, {
+    >('/himalayas/jobs/search', {
         signal,
         params: {
             q: designation,
@@ -284,7 +282,7 @@ async function fetchJSearchJobs(
     designation: string,
     signal?: AbortSignal
 ): Promise<RelevantJob[]> {
-    const response = await axios.get<
+    const response = await api.get<
         ApiEnvelope<{
             data?: Array<{
                 job_id?: string
@@ -303,7 +301,7 @@ async function fetchJSearchJobs(
                 job_is_remote?: boolean | null
             }>
         }>
-    >(`${backendUrl}/jsearch/search`, {
+    >('/jsearch/search', {
         signal,
         params: {
             query: `${designation} jobs`,
@@ -351,19 +349,40 @@ async function fetchJSearchJobs(
     )
 }
 
+type RelevantJobsResult = {
+    jobs: RelevantJob[]
+    sourceErrors: Partial<Record<JobSource, string>>
+}
+
+/**
+ * Every mount of Home fans out to five providers, two of which bill per search
+ * (SerpAPI, JSearch). Leaving a portal and coming back re-mounts the component,
+ * so without this a few minutes of browsing costs a dozen paid searches for
+ * results that have not changed. Module scope, so it survives route changes and
+ * is cleared only by a full page load.
+ */
+const CACHE_TTL_MS = 10 * 60 * 1000
+const resultCache = new Map<string, { at: number; value: RelevantJobsResult }>()
+
+function cacheKey(designation: string, location: string | null): string {
+    return `${designation.trim().toLowerCase()}|${location?.trim().toLowerCase() ?? ''}`
+}
+
+/** Drops the cached fan-out so the next call refetches. Used by the Refresh button. */
+export function invalidateRelevantJobs(): void {
+    resultCache.clear()
+}
+
 export function isRelevantJobsConfigured(): boolean {
-    return Boolean(backendUrl)
+    return isApiConfigured()
 }
 
 export async function fetchRelevantJobs(
     designation: string,
     location: string | null,
     signal?: AbortSignal
-): Promise<{
-    jobs: RelevantJob[]
-    sourceErrors: Partial<Record<JobSource, string>>
-}> {
-    if (!backendUrl) {
+): Promise<RelevantJobsResult> {
+    if (!isApiConfigured()) {
         return { jobs: [], sourceErrors: {} }
     }
 
@@ -371,6 +390,14 @@ export async function fetchRelevantJobs(
     if (!query) {
         return { jobs: [], sourceErrors: {} }
     }
+
+    const key = cacheKey(query, location)
+
+    const cached = resultCache.get(key)
+    if (cached && Date.now() - cached.at < CACHE_TTL_MS) {
+        return cached.value
+    }
+    if (cached) resultCache.delete(key)
 
     const fetchers: Array<{
         source: JobSource
@@ -383,25 +410,38 @@ export async function fetchRelevantJobs(
         { source: 'jsearch', run: () => fetchJSearchJobs(query, signal) },
     ]
 
-    const results = await Promise.allSettled(
-        fetchers.map((entry) => entry.run())
-    )
+    const run = async (): Promise<RelevantJobsResult> => {
+        const results = await Promise.allSettled(
+            fetchers.map((entry) => entry.run())
+        )
 
-    const jobs: RelevantJob[] = []
-    const sourceErrors: Partial<Record<JobSource, string>> = {}
+        const jobs: RelevantJob[] = []
+        const sourceErrors: Partial<Record<JobSource, string>> = {}
 
-    results.forEach((result, index) => {
-        const source = fetchers[index].source
-        if (result.status === 'fulfilled') {
-            jobs.push(...result.value)
-        } else {
-            const message =
-                result.reason instanceof Error
-                    ? result.reason.message
-                    : 'Could not load jobs'
-            sourceErrors[source] = message
-        }
-    })
+        results.forEach((result, index) => {
+            const source = fetchers[index]?.source
+            if (!source) return
+            if (result.status === 'fulfilled') {
+                jobs.push(...result.value)
+            } else {
+                const message =
+                    result.reason instanceof Error
+                        ? result.reason.message
+                        : 'Could not load jobs'
+                sourceErrors[source] = message
+            }
+        })
 
-    return { jobs, sourceErrors }
+        return { jobs, sourceErrors }
+    }
+
+    const value = await run()
+
+    // Only cache a result that actually produced listings; an all-failed fan-out
+    // should be retried rather than remembered for ten minutes.
+    if (value.jobs.length > 0) {
+        resultCache.set(key, { at: Date.now(), value })
+    }
+
+    return value
 }

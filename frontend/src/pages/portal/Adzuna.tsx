@@ -1,14 +1,27 @@
 import { useEffect, useState } from "react";
 import axios from "axios";
+import { api } from "../../lib/api";
 import moment from "moment";
 import Select from "react-select";
 import SubHeader from "../../components/SubHeader";
 import PortalJobCard from "../../components/PortalJobCard";
 import { Checkbox } from "@/components/ui/checkbox";
 import { selectStyles } from "../../lib/multiSelectStyles";
+import { usePageReset } from "../../hooks/usePageReset";
+import InlineLoading from "../../components/InlineLoading";
 
 const ADZUNA_FIRST_PAGE = 1;
 const FILTER_DEBOUNCE_MS = 500;
+
+/**
+ * Sent explicitly rather than relying on Adzuna's default, because the page
+ * count is derived from it: dividing the total by the number of rows that came
+ * back overstates the page count whenever the last page is short.
+ */
+const ADZUNA_RESULTS_PER_PAGE = 10;
+
+/** Opened without a category the page showed nothing, so land on a populated one. */
+const DEFAULT_CATEGORY: AdzunaCategory = { tag: "it-jobs", label: "IT Jobs" };
 
 const useDebouncedValue = <T,>(value: T, delayMs: number): T => {
     const [debouncedValue, setDebouncedValue] = useState(value);
@@ -29,7 +42,8 @@ type CountryOption = {
     label: string;
 };
 
-const COUNTRY_OPTIONS: CountryOption[] = [
+/** Non-empty tuple so the last-resort COUNTRY_OPTIONS[0] fallback is typed. */
+const COUNTRY_OPTIONS: [CountryOption, ...CountryOption[]] = [
     { value: "au", label: "Australia" },
     { value: "at", label: "Austria" },
     { value: "be", label: "Belgium" },
@@ -60,8 +74,6 @@ const getDefaultCountryOption = (): CountryOption => {
             : "";
     const browserLocale =
         typeof navigator !== "undefined" ? navigator.language : "";
-    const localeForMoment = browserLocale || moment.locale();
-    const normalizedLocale = moment.locale(localeForMoment).toLowerCase();
     const timezoneToCountryCode: Record<string, string> = {
         "asia/kolkata": "in",
         "europe/london": "gb",
@@ -86,13 +98,13 @@ const getDefaultCountryOption = (): CountryOption => {
         "europe/brussels": "be",
         "europe/vienna": "at",
     };
-    const localeParts = normalizedLocale.split(/[-_]/);
     const regionFromTimezone = timezoneToCountryCode[browserTimezone] ?? "";
-    const regionFromMoment = localeParts.length > 1 ? localeParts[1] : "";
+    // navigator.language directly: moment.locale(x) is a global SETTER, not a
+    // getter, so round-tripping through it mutated app-wide date formatting and
+    // dropped the region anyway ("en-US" comes back as "en").
     const regionFromBrowser = browserLocale.split(/[-_]/)[1]?.toLowerCase() ?? "";
     const countryCode =
         regionFromTimezone ||
-        regionFromMoment ||
         regionFromBrowser ||
         DEFAULT_COUNTRY_CODE;
 
@@ -146,12 +158,11 @@ export default function Adzuna() {
     const [selectedCountry, setSelectedCountry] =
         useState<CountryOption>(getDefaultCountryOption);
     const [selectedCategory, setSelectedCategory] =
-        useState<AdzunaCategory | null>(null);
+        useState<AdzunaCategory | null>(DEFAULT_CATEGORY);
     const [jobsPayload, setJobsPayload] =
         useState<JobsSearchResponseBody["data"] | null>(null);
     const [jobsLoading, setJobsLoading] = useState(false);
     const [jobsError, setJobsError] = useState<string | null>(null);
-    const [currentPage, setCurrentPage] = useState<number>(ADZUNA_FIRST_PAGE);
     const [jobKeyword, setJobKeyword] = useState("");
     const [jobLocation, setJobLocation] = useState("");
     const [salaryMin, setSalaryMin] = useState("");
@@ -165,29 +176,45 @@ export default function Adzuna() {
     const debouncedSalaryMax = useDebouncedValue(salaryMax, FILTER_DEBOUNCE_MS);
     const debouncedMaxDaysOld = useDebouncedValue(maxDaysOld, FILTER_DEBOUNCE_MS);
 
-    const backendUrl = import.meta.env.VITE_BACKEND_URL;
-
-    const fetchCategories = async () => {
-        try {
-            const response = await axios.get<CategoriesResponseBody>(
-                `${backendUrl}/adzuna/categories`,
-            );
-            const results = response.data?.data?.results ?? [];
-            setCategories(results);
-        } catch (error) {
-            console.error(error);
-        }
-    };
 
     useEffect(() => {
-        void fetchCategories();
+        const ctrl = new AbortController();
+
+        void (async () => {
+            try {
+                const response = await api.get<CategoriesResponseBody>(
+                    `/adzuna/categories`,
+                    { signal: ctrl.signal },
+                );
+                const results = response.data?.data?.results ?? [];
+                setCategories(results);
+
+                // Adopt Adzuna's own label for the preselected category. Only the
+                // label changes, so the tag-keyed effects below do not refetch.
+                const match = results.find(
+                    (cat) => cat.tag === DEFAULT_CATEGORY.tag,
+                );
+                if (match) {
+                    setSelectedCategory((prev) =>
+                        prev?.tag === match.tag && prev.label !== match.label
+                            ? match
+                            : prev,
+                    );
+                }
+            } catch (error) {
+                if (axios.isCancel(error)) return;
+                console.error(error);
+            }
+        })();
+
+        return () => ctrl.abort();
     }, []);
 
-    useEffect(() => {
-        setCurrentPage(ADZUNA_FIRST_PAGE);
-    }, [
-        selectedCountry,
-        selectedCategory,
+    const selectedCategoryTag = selectedCategory?.tag ?? null;
+
+    const filterSignature = [
+        selectedCountry.value,
+        selectedCategoryTag,
         debouncedJobKeyword,
         debouncedJobLocation,
         debouncedSalaryMin,
@@ -195,14 +222,17 @@ export default function Adzuna() {
         debouncedMaxDaysOld,
         fullTimeOnly,
         partTimeOnly,
-    ]);
+    ].join("|");
+
+    const [currentPage, setCurrentPage] = usePageReset(
+        filterSignature,
+        ADZUNA_FIRST_PAGE,
+    );
 
     useEffect(() => {
-        if (!selectedCategory) {
-            setJobsPayload(null);
-            setJobsError(null);
-            return;
-        }
+        // Nothing selected: the results section is not rendered at all, so there
+        // is no stale state to clear here.
+        if (!selectedCategoryTag) return;
 
         const ctrl = new AbortController();
 
@@ -210,12 +240,13 @@ export default function Adzuna() {
             setJobsLoading(true);
             setJobsError(null);
             try {
-                const response = await axios.get<JobsSearchResponseBody>(
-                    `${backendUrl}/adzuna/jobs/${selectedCountry.value}/search/${currentPage}`,
+                const response = await api.get<JobsSearchResponseBody>(
+                    `/adzuna/jobs/${selectedCountry.value}/search/${currentPage}`,
                     {
                         signal: ctrl.signal,
                         params: {
-                            category: selectedCategory.tag,
+                            category: selectedCategoryTag,
+                            results_per_page: String(ADZUNA_RESULTS_PER_PAGE),
                             what: debouncedJobKeyword.trim() || undefined,
                             where: debouncedJobLocation.trim() || undefined,
                             salary_min: debouncedSalaryMin.trim() || undefined,
@@ -248,9 +279,8 @@ export default function Adzuna() {
 
         return () => ctrl.abort();
     }, [
-        backendUrl,
         currentPage,
-        selectedCategory,
+        selectedCategoryTag,
         selectedCountry,
         debouncedJobKeyword,
         debouncedJobLocation,
@@ -263,9 +293,11 @@ export default function Adzuna() {
 
     const loadedResultsCount = jobsPayload?.results?.length ?? 0;
     const totalResultsCount = jobsPayload?.count ?? 0;
+    // Divide by the page size we asked for, not by how many rows this page
+    // happened to return — a short final page would otherwise inflate the count.
     const estimatedTotalPages =
-        loadedResultsCount > 0 && totalResultsCount > 0
-            ? Math.ceil(totalResultsCount / loadedResultsCount)
+        totalResultsCount > 0
+            ? Math.ceil(totalResultsCount / ADZUNA_RESULTS_PER_PAGE)
             : null;
     const canGoPrev = currentPage > ADZUNA_FIRST_PAGE;
     const canGoNext = jobsLoading
@@ -412,11 +444,7 @@ export default function Adzuna() {
                                     </span>{" "}
                                     ({selectedCountry.label}, page {currentPage})
                                 </p>
-                                {jobsLoading && (
-                                    <p className="text-sm text-neutral-500">
-                                        Loading…
-                                    </p>
-                                )}
+                                {jobsLoading && <InlineLoading />}
                                 {!jobsLoading && jobsError && (
                                     <p className="text-sm text-red-600">
                                         {jobsError}

@@ -62,23 +62,21 @@ function ProfileRow({
 
 export default function Profile() {
     const { user, loading: authLoading } = useAuth()
+    const userId = user?.id ?? null
     const [profile, setProfile] = useState<ProfileUser | null>(null)
     const [loading, setLoading] = useState(true)
     const [error, setError] = useState<string | null>(null)
+    // Constant for the app's lifetime, so it is derived rather than pushed into
+    // state from inside the effect.
+    const apiConfigured = isApiConfigured()
+    const configError = apiConfigured
+        ? null
+        : 'Backend URL is not configured (VITE_BACKEND_URL).'
 
     useEffect(() => {
-        if (authLoading) return
-
-        if (!user) {
-            setLoading(false)
-            return
-        }
-
-        if (!isApiConfigured()) {
-            setError('Backend URL is not configured (VITE_BACKEND_URL).')
-            setLoading(false)
-            return
-        }
+        // Signed out the component redirects to /login before rendering the
+        // skeleton, so `loading` staying true is never observed.
+        if (authLoading || !userId || !apiConfigured) return
 
         let cancelled = false
 
@@ -115,7 +113,7 @@ export default function Profile() {
         return () => {
             cancelled = true
         }
-    }, [authLoading, user])
+    }, [authLoading, userId, apiConfigured])
 
     if (!authLoading && !user) {
         return <Navigate to="/login" replace state={{ from: '/profile' }} />
@@ -138,7 +136,7 @@ export default function Profile() {
                     </div>
                 </div>
 
-                {error ? (
+                {error ?? configError ? (
                     <div className="px-4 lg:px-60">
                         <div
                             role="alert"
@@ -149,7 +147,7 @@ export default function Profile() {
                                 aria-hidden
                             />
                             <div>
-                                <p>{error}</p>
+                                <p>{error ?? configError}</p>
                                 <Link
                                     to="/login"
                                     className="mt-2 inline-block font-medium text-red-900 underline"
@@ -161,7 +159,7 @@ export default function Profile() {
                     </div>
                 ) : null}
 
-                {authLoading || loading ? (
+                {authLoading || (apiConfigured && loading) ? (
                     <FormSkeleton
                         className="px-4 pb-10 lg:px-60"
                         sections={1}

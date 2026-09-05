@@ -1,10 +1,12 @@
 import { useEffect, useMemo, useState } from "react";
 import axios from "axios";
+import { api } from "../../lib/api";
 import moment from "moment";
 import CreatableSelect from "react-select/creatable";
 import SubHeader from "../../components/SubHeader";
 import PortalJobCard from "../../components/PortalJobCard";
 import { selectStyles } from "../../lib/multiSelectStyles";
+import InlineLoading from "../../components/InlineLoading";
 
 const FILTER_DEBOUNCE_MS = 500;
 const DEFAULT_LIMIT = 20;
@@ -142,8 +144,8 @@ export default function Remotive() {
         const ctrl = new AbortController();
         (async () => {
             try {
-                const res = await axios.get<{ success?: boolean; data?: unknown }>(
-                    `${backendUrl}/remotive/remote-jobs/categories`,
+                const res = await api.get<{ success?: boolean; data?: unknown }>(
+                    `/remotive/remote-jobs/categories`,
                     { signal: ctrl.signal },
                 );
                 const opts = parseCategoryOptions(res.data?.data);
@@ -156,7 +158,7 @@ export default function Remotive() {
             }
         })();
         return () => ctrl.abort();
-    }, [backendUrl]);
+    }, []);
 
     useEffect(() => {
         const ctrl = new AbortController();
@@ -175,8 +177,8 @@ export default function Remotive() {
                     params.company_name = debouncedCompany.trim();
                 }
 
-                const response = await axios.get<JobsResponse>(
-                    `${backendUrl}/remotive/remote-jobs`,
+                const response = await api.get<JobsResponse>(
+                    `/remotive/remote-jobs`,
                     {
                         signal: ctrl.signal,
                         params,
@@ -203,7 +205,6 @@ export default function Remotive() {
         })();
         return () => ctrl.abort();
     }, [
-        backendUrl,
         selectedCategory,
         debouncedSearch,
         debouncedCompany,
@@ -312,9 +313,7 @@ export default function Remotive() {
 
                     <div className="flex flex-col gap-3 lg:col-span-4">
                         <div className="sticky top-20 rounded-2xl border border-[#e6e6e6]/75 bg-white p-4 shadow-[0_1px_8px_rgba(0,0,0,0.05)]">
-                            {jobsLoading && (
-                                <p className="text-sm text-neutral-500">Loading…</p>
-                            )}
+                            {jobsLoading && <InlineLoading />}
                             {!jobsLoading && jobsError && (
                                 <p className="text-sm text-red-600">{jobsError}</p>
                             )}

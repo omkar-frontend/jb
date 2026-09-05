@@ -1,13 +1,14 @@
-import { useEffect, useState, type ReactNode } from 'react'
+import { useCallback, useEffect, useState, type ReactNode } from 'react'
 import {
     AlertCircle,
     Loader,
     Plus,
     Trash2,
 } from 'lucide-react'
-import { Navigate } from 'react-router-dom'
+import { Navigate, useBlocker } from 'react-router-dom'
 import CreatableSelect from 'react-select/creatable'
 import { Back } from '../components/Back'
+import ConfirmDialog from '../components/ConfirmDialog'
 import { FormSkeleton } from '../components/FormSkeleton'
 import { useAuth } from '../context/AuthContext'
 import {
@@ -97,6 +98,42 @@ function Field({
     )
 }
 
+/**
+ * The saved value is a string[], but parsing on every keystroke deletes the
+ * newline the user just typed — `linesToList` filters empty lines, so pressing
+ * Enter re-rendered the textarea without it and a second line was impossible.
+ * Hold the raw text locally while editing and commit the parsed list on blur.
+ */
+function OtherLinksField({
+    value,
+    onChange,
+}: {
+    value: string[]
+    onChange: (next: string[]) => void
+}) {
+    const [text, setText] = useState(() => listToLines(value))
+    const [committed, setCommitted] = useState(value)
+
+    // Re-sync when the list is replaced from outside (profile load, or our own
+    // commit normalising the text). Adjusting state during render rather than in
+    // an effect avoids a second render pass with stale text on screen.
+    if (value !== committed) {
+        setCommitted(value)
+        setText(listToLines(value))
+    }
+
+    return (
+        <textarea
+            className={`${inputClass} resize-none`}
+            rows={4}
+            value={text}
+            placeholder="e.g. https://twitter.com"
+            onChange={(e) => setText(e.target.value)}
+            onBlur={() => onChange(linesToList(text))}
+        />
+    )
+}
+
 function Section({
     title,
     description,
@@ -121,6 +158,7 @@ function Section({
 
 export default function Details() {
     const { user, loading: authLoading } = useAuth()
+    const userId = user?.id ?? null
     const [fileMeta, setFileMeta] = useState({ fileName: '', mimeType: '' })
     const [form, setForm] = useState<CvExtracted | null>(null)
     const [loading, setLoading] = useState(true)
@@ -128,9 +166,11 @@ export default function Details() {
     const [error, setError] = useState<string | null>(null)
     const [saveSuccess, setSaveSuccess] = useState(false)
     const [hasProfile, setHasProfile] = useState(false)
+    /** Serialised form as last loaded or saved; anything else means unsaved edits. */
+    const [savedSnapshot, setSavedSnapshot] = useState<string | null>(null)
 
     useEffect(() => {
-        if (authLoading || !user) return
+        if (authLoading || !userId) return
 
         let cancelled = false
 
@@ -149,18 +189,22 @@ export default function Details() {
             }
 
             if (!data?.extractedInformation) {
+                const blank = emptyExtracted()
                 setHasProfile(false)
                 setFileMeta({ fileName: '', mimeType: '' })
-                setForm(emptyExtracted())
+                setForm(blank)
+                setSavedSnapshot(JSON.stringify(blank))
                 setLoading(false)
                 return
             }
 
             const parsed = parseExtractedInformation(data.extractedInformation)
             if (!parsed) {
+                const blank = emptyExtracted()
                 setError('Could not parse saved CV details. You can fill them in manually.')
                 setHasProfile(false)
-                setForm(emptyExtracted())
+                setForm(blank)
+                setSavedSnapshot(JSON.stringify(blank))
                 setLoading(false)
                 return
             }
@@ -171,6 +215,7 @@ export default function Details() {
                 mimeType: parsed.data.mimeType,
             })
             setForm(parsed.data.extracted)
+            setSavedSnapshot(JSON.stringify(parsed.data.extracted))
             setLoading(false)
         }
 
@@ -179,7 +224,39 @@ export default function Details() {
         return () => {
             cancelled = true
         }
-    }, [authLoading, user])
+    }, [authLoading, userId])
+
+    const isDirty =
+        form !== null && savedSnapshot !== null && JSON.stringify(form) !== savedSnapshot
+
+    // In-app navigation: Back, the header links, browser back/forward.
+    // Memoised: useBlocker re-registers with the router whenever this function's
+    // identity changes, which an inline arrow would do on every render.
+    const shouldBlockNavigation = useCallback(
+        ({
+            currentLocation,
+            nextLocation,
+        }: {
+            currentLocation: { pathname: string }
+            nextLocation: { pathname: string }
+        }) => isDirty && currentLocation.pathname !== nextLocation.pathname,
+        [isDirty],
+    )
+    const blocker = useBlocker(shouldBlockNavigation)
+
+    // Tab close, reload, or a link out of the app. The browser shows its own
+    // generic prompt here — the wording is not ours to choose.
+    useEffect(() => {
+        if (!isDirty) return
+
+        const onBeforeUnload = (event: BeforeUnloadEvent) => {
+            event.preventDefault()
+            event.returnValue = ''
+        }
+
+        window.addEventListener('beforeunload', onBeforeUnload)
+        return () => window.removeEventListener('beforeunload', onBeforeUnload)
+    }, [isDirty])
 
     if (!authLoading && !user) {
         return <Navigate to="/login" replace state={{ from: '/details' }} />
@@ -223,12 +300,13 @@ export default function Details() {
 
         setHasProfile(true)
         setSaveSuccess(true)
+        setSavedSnapshot(JSON.stringify(payload.data.extracted))
     }
 
     return (
         <div className="min-h-[calc(100dvh-8rem)] bg-white w-full">
             <div className=" w-full">
-                <div className="flex flex-wrap items-start lg:px-60 px-4 justify-between gap-4 sticky py-5 top-17.5 bg-white/80 backdrop-blur-sm z-10">
+                <div className="flex flex-wrap items-start lg:px-60 px-4 justify-between gap-4 sticky py-5 md:top-17.5 top-14.5 bg-white/80 backdrop-blur-sm z-10">
                     <div className="flex items-center gap-5">
                         <Back />
                         <div>
@@ -773,19 +851,11 @@ export default function Details() {
                                 </Field>
                             </div>
                             <Field label="Other links (one per line)">
-                                <textarea
-                                    className={`${inputClass} resize-none`}
-                                    rows={4}
-                                    value={listToLines(form.links.other)}
-                                    placeholder="e.g. https://twitter.com"
-                                    onChange={(e) =>
+                                <OtherLinksField
+                                    value={form.links.other}
+                                    onChange={(other) =>
                                         updateForm({
-                                            links: {
-                                                ...form.links,
-                                                other: linesToList(
-                                                    e.target.value
-                                                ),
-                                            },
+                                            links: { ...form.links, other },
                                         })
                                     }
                                 />
@@ -794,6 +864,21 @@ export default function Details() {
                     </form>
                 ) : null}
             </div>
+
+            <ConfirmDialog
+                open={blocker.state === 'blocked'}
+                onOpenChange={(open) => {
+                    // Sole cancel path — Escape, backdrop and the cancel button
+                    // all arrive here, so reset() is never called twice.
+                    if (!open) blocker.reset?.()
+                }}
+                tone="danger"
+                title="Discard unsaved changes?"
+                description="Your edits to these CV details have not been saved. Leaving now will lose them."
+                confirmLabel="Discard changes"
+                cancelLabel="Keep editing"
+                onConfirm={() => blocker.proceed?.()}
+            />
         </div>
     )
 }

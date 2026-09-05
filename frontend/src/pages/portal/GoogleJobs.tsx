@@ -1,10 +1,12 @@
-import { useEffect, useLayoutEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import axios from "axios";
-import moment from "moment";
+import { api } from "../../lib/api";
 import Select from "react-select";
 import SubHeader from "../../components/SubHeader";
 import PortalJobCard from "../../components/PortalJobCard";
 import { selectStyles } from "../../lib/multiSelectStyles";
+import { usePageReset } from "../../hooks/usePageReset";
+import InlineLoading from "../../components/InlineLoading";
 
 const FILTER_DEBOUNCE_MS = 500;
 
@@ -58,13 +60,20 @@ const ADZUNA_COUNTRY_CODE_ORDER = [
     "us",
 ] as const;
 
-const GOOGLE_JOBS_LOCATION_OPTIONS: LocationOption[] =
-    ADZUNA_COUNTRY_CODE_ORDER.map((code) => {
-        const name = SERP_LOCATION_BY_CODE[code];
-        return { value: name, label: name };
-    });
+const GOOGLE_JOBS_LOCATION_OPTIONS: LocationOption[] = ADZUNA_COUNTRY_CODE_ORDER
+    .map((code) => SERP_LOCATION_BY_CODE[code])
+    .filter((name): name is string => Boolean(name))
+    .map((name) => ({ value: name, label: name }));
+
 
 const DEFAULT_COUNTRY_CODE = "gb";
+
+const DEFAULT_LOCATION_NAME =
+    SERP_LOCATION_BY_CODE[DEFAULT_COUNTRY_CODE] ?? "United Kingdom";
+const DEFAULT_LOCATION_OPTION: LocationOption = {
+    value: DEFAULT_LOCATION_NAME,
+    label: DEFAULT_LOCATION_NAME,
+};
 
 function getDefaultGoogleJobsLocationOption(): LocationOption {
     const browserTimezone =
@@ -74,8 +83,6 @@ function getDefaultGoogleJobsLocationOption(): LocationOption {
             : "";
     const browserLocale =
         typeof navigator !== "undefined" ? navigator.language : "";
-    const localeForMoment = browserLocale || moment.locale();
-    const normalizedLocale = moment.locale(localeForMoment).toLowerCase();
     const timezoneToCountryCode: Record<string, string> = {
         "asia/kolkata": "in",
         "europe/london": "gb",
@@ -100,16 +107,14 @@ function getDefaultGoogleJobsLocationOption(): LocationOption {
         "europe/brussels": "be",
         "europe/vienna": "at",
     };
-    const localeParts = normalizedLocale.split(/[-_]/);
     const regionFromTimezone = timezoneToCountryCode[browserTimezone] ?? "";
-    const regionFromMoment = localeParts.length > 1 ? localeParts[1] : "";
+    // navigator.language directly: moment.locale(x) is a global SETTER, not a
+    // getter, so round-tripping through it mutated app-wide date formatting and
+    // dropped the region anyway ("en-US" comes back as "en").
     const regionFromBrowser =
         browserLocale.split(/[-_]/)[1]?.toLowerCase() ?? "";
     const countryCode =
-        regionFromTimezone ||
-        regionFromMoment ||
-        regionFromBrowser ||
-        DEFAULT_COUNTRY_CODE;
+        regionFromTimezone || regionFromBrowser || DEFAULT_COUNTRY_CODE;
 
     const locationName =
         SERP_LOCATION_BY_CODE[countryCode] ??
@@ -117,10 +122,7 @@ function getDefaultGoogleJobsLocationOption(): LocationOption {
 
     return (
         GOOGLE_JOBS_LOCATION_OPTIONS.find((o) => o.value === locationName) ??
-        GOOGLE_JOBS_LOCATION_OPTIONS.find(
-            (o) => o.value === SERP_LOCATION_BY_CODE[DEFAULT_COUNTRY_CODE],
-        ) ??
-        GOOGLE_JOBS_LOCATION_OPTIONS[0]
+        DEFAULT_LOCATION_OPTION
     );
 }
 
@@ -302,7 +304,6 @@ const DATE_POSTED_FILTERS: StaticFilterKey[] = [
 ];
 
 export default function GoogleJobs() {
-    const backendUrl = import.meta.env.VITE_BACKEND_URL;
 
     const [jobKeyword, setJobKeyword] = useState("Software Engineer");
     const [selectedLocation, setSelectedLocation] =
@@ -317,12 +318,14 @@ export default function GoogleJobs() {
         FILTER_DEBOUNCE_MS,
     );
 
-    const [pageIndex, setPageIndex] = useState(0);
-    const [nextTokenTrail, setNextTokenTrail] = useState<string[]>([]);
+    /**
+     * SerpAPI paginates by opaque token, so page N needs the token returned by
+     * page N-1. Kept in a ref rather than state: only the fetch effect reads it,
+     * and mirroring state into a ref via a second effect meant the fetch could
+     * observe a trail one commit out of date. Whether a next page exists is read
+     * off the current payload instead, which is what the buttons should reflect.
+     */
     const nextTokenTrailRef = useRef<string[]>([]);
-    useEffect(() => {
-        nextTokenTrailRef.current = nextTokenTrail;
-    }, [nextTokenTrail]);
 
     const [payload, setPayload] = useState<GoogleJobsSerpResponse | null>(null);
     const [loading, setLoading] = useState(false);
@@ -332,9 +335,13 @@ export default function GoogleJobs() {
 
     const searchSignature = `${effectiveQ}|${debouncedLocation.trim() || selectedLocation.value}`;
 
-    useLayoutEffect(() => {
-        setPageIndex(0);
-        setNextTokenTrail([]);
+    const [pageIndex, setPageIndex] = usePageReset(searchSignature, 0);
+
+    // Clearing a ref is not state, so it stays in an effect. Page 0 never reads
+    // the trail, and later pages overwrite each slot before reading it, so this
+    // running after the commit is fine.
+    useEffect(() => {
+        nextTokenTrailRef.current = [];
     }, [searchSignature]);
 
     useEffect(() => {
@@ -364,8 +371,8 @@ export default function GoogleJobs() {
                     params.next_page_token = token;
                 }
 
-                const response = await axios.get<JobsResponseBody>(
-                    `${backendUrl}/serp/jobs`,
+                const response = await api.get<JobsResponseBody>(
+                    `/serp/jobs`,
                     {
                         signal: ctrl.signal,
                         params,
@@ -381,14 +388,8 @@ export default function GoogleJobs() {
                     throw new Error("Empty response");
                 }
 
-                const nextTok =
+                nextTokenTrailRef.current[pageIndex] =
                     data.serpapi_pagination?.next_page_token ?? "";
-
-                setNextTokenTrail((prev) => {
-                    const copy = [...prev];
-                    copy[pageIndex] = nextTok;
-                    return copy;
-                });
 
                 setPayload(data);
             } catch (err: unknown) {
@@ -406,7 +407,6 @@ export default function GoogleJobs() {
 
         return () => ctrl.abort();
     }, [
-        backendUrl,
         debouncedLocation,
         effectiveQ,
         pageIndex,
@@ -427,9 +427,8 @@ export default function GoogleJobs() {
         }`;
 
     const canGoPrev = pageIndex > 0 && !loading;
-    const nextForCurrentPage =
-        nextTokenTrail[pageIndex] != null && nextTokenTrail[pageIndex] !== "";
-    const canGoNext = !loading && Boolean(nextForCurrentPage);
+    const hasNextPage = Boolean(payload?.serpapi_pagination?.next_page_token);
+    const canGoNext = !loading && hasNextPage;
 
     return (
         <div className="min-h-[calc(100dvh)] bg-neutral-50 p-5 text-neutral-900 sm:px-40 sm:py-10">
@@ -561,9 +560,7 @@ export default function GoogleJobs() {
                                     (debouncedLocation.trim() ||
                                         selectedLocation.value)}
                             </p>
-                            {loading && (
-                                <p className="text-sm text-neutral-500">Loading…</p>
-                            )}
+                            {loading && <InlineLoading />}
                             {!loading && error && (
                                 <p className="text-sm text-red-600">{error}</p>
                             )}
@@ -595,7 +592,7 @@ export default function GoogleJobs() {
                                     >
                                         Next
                                     </button>
-                                    {!nextForCurrentPage &&
+                                    {!hasNextPage &&
                                         !loading &&
                                         payload?.jobs_results &&
                                         payload.jobs_results.length > 0 && (

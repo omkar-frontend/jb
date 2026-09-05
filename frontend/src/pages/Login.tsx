@@ -1,13 +1,10 @@
-import { useState } from 'react'
 import { Link, Navigate, useLocation, useNavigate } from 'react-router-dom'
-import { AlertCircle, Loader } from 'lucide-react'
+import AuthForm from '../components/AuthForm'
 import AuthLayout from '../components/AuthLayout'
 import { useAuth } from '../context/AuthContext'
-import { supabase } from '../lib/supabase'
 
 type LoginLocationState = {
     from?: string
-    pendingCvSave?: boolean
 }
 
 export default function Login() {
@@ -16,33 +13,9 @@ export default function Login() {
     const redirectState = (location.state as LoginLocationState | null) ?? {}
     const redirectTo = redirectState.from ?? '/'
     const { user, loading: authLoading } = useAuth()
-    const [email, setEmail] = useState('')
-    const [password, setPassword] = useState('')
-    const [error, setError] = useState<string | null>(null)
-    const [loading, setLoading] = useState(false)
 
     if (!authLoading && user) {
         return <Navigate to={redirectTo} replace />
-    }
-
-    async function handleSubmit(e: React.FormEvent) {
-        e.preventDefault()
-        setError(null)
-        setLoading(true)
-
-        const { error: signInError } = await supabase.auth.signInWithPassword({
-            email: email.trim(),
-            password,
-        })
-
-        setLoading(false)
-
-        if (signInError) {
-            setError(signInError.message)
-            return
-        }
-
-        navigate(redirectTo, { replace: true })
     }
 
     return (
@@ -58,63 +31,10 @@ export default function Login() {
                 </>
             }
         >
-            <form onSubmit={(e) => void handleSubmit(e)} className="space-y-5">
-                <div>
-                    <label htmlFor="email" className="mb-1 block text-xs font-medium text-neutral-700">
-                        Email
-                    </label>
-                    <input
-                        id="email"
-                        type="email"
-                        autoComplete="email"
-                        required
-                        value={email}
-                        onChange={(e) => setEmail(e.target.value)}
-                        className="cmn-field"
-                        placeholder="you@example.com"
-                    />
-                </div>
-                <div>
-                    <label htmlFor="password" className="mb-1 block text-xs font-medium text-neutral-700">
-                        Password
-                    </label>
-                    <input
-                        id="password"
-                        type="password"
-                        autoComplete="current-password"
-                        required
-                        value={password}
-                        onChange={(e) => setPassword(e.target.value)}
-                        className="cmn-field"
-                        placeholder="••••••••"
-                    />
-                </div>
-
-                {error ? (
-                    <div
-                        role="alert"
-                        className="flex items-start gap-2 rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-800"
-                    >
-                        <AlertCircle className="mt-0.5 h-4 w-4 shrink-0" aria-hidden />
-                        <span>{error}</span>
-                    </div>
-                ) : null}
-
-                <button
-                    type="submit"
-                    disabled={loading || authLoading}
-                    className="flex w-full items-center justify-center gap-2 rounded-lg bg-emerald-600 px-4 py-2.5 text-sm font-medium text-white hover:bg-emerald-700 disabled:cursor-not-allowed disabled:opacity-60 transition-colors"
-                >
-                    {loading ? (
-                        <>
-                            <Loader className="h-4 w-4 animate-spin" aria-hidden />
-                            Signing in…
-                        </>
-                    ) : (
-                        'Sign in'
-                    )}
-                </button>
-            </form>
+            <AuthForm
+                mode="login"
+                onSuccess={() => navigate(redirectTo, { replace: true })}
+            />
         </AuthLayout>
     )
 }

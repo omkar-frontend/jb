@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState } from 'react'
 import { AlertCircle, Loader, RefreshCcw } from 'lucide-react'
+import AuthDialog from './AuthDialog'
 import { useAuth } from '../context/AuthContext'
 import {
     getCvProfile,
@@ -7,6 +8,7 @@ import {
 } from '../lib/cvProfile'
 import {
     fetchRelevantJobs,
+    invalidateRelevantJobs,
     isRelevantJobsConfigured,
     type RelevantJob,
 } from '../lib/relevantJobs'
@@ -68,8 +70,15 @@ function JobCard({ job }: { job: RelevantJob }) {
     return <div className={cardClassName}>{inner}</div>
 }
 
-export default function RelevantJobs() {
+type RelevantJobsProps = {
+    /** Bumped by the parent when the saved CV changes, so the profile is re-read. */
+    refreshKey?: number
+}
+
+export default function RelevantJobs({ refreshKey = 0 }: RelevantJobsProps) {
     const { user, loading: authLoading } = useAuth()
+    // Effects key on the id so a token refresh does not refetch everything.
+    const userId = user?.id ?? null
     const [designation, setDesignation] = useState<string | null>(null)
     const [location, setLocation] = useState<string | null>(null)
     const [profileLoading, setProfileLoading] = useState(true)
@@ -78,6 +87,7 @@ export default function RelevantJobs() {
     const [jobsError, setJobsError] = useState<string | null>(null)
     const [failedSources, setFailedSources] = useState<string[]>([])
     const [jobsRefreshKey, setJobsRefreshKey] = useState(0)
+    const [authDialogOpen, setAuthDialogOpen] = useState(false)
 
     const fetchProfile = useCallback(async () => {
         try {
@@ -93,18 +103,23 @@ export default function RelevantJobs() {
     }, [])
 
     const applyProfile = useCallback((parsed: Awaited<ReturnType<typeof fetchProfile>>) => {
-        if (!parsed) {
-            setDesignation(null)
-            setLocation(null)
-            return
-        }
+        const extracted = parsed?.data?.extracted
+        const nextDesignation = extracted?.designation?.trim() || null
 
-        const extracted = parsed.data?.extracted
-        setDesignation(extracted?.designation?.trim() || null)
+        setDesignation(nextDesignation)
         setLocation(extracted?.location?.trim() || null)
+
+        // Raised in the same batch as the profile finishing. The jobs effect only
+        // runs on the next commit, so without this the empty state would flash
+        // for a frame between "profile loaded" and "search started".
+        if (nextDesignation && isRelevantJobsConfigured()) {
+            setJobsLoading(true)
+        }
     }, [])
 
     const handleRefresh = useCallback(async () => {
+        // Refresh means refresh: skip the cached fan-out.
+        invalidateRelevantJobs()
         const parsed = await fetchProfile()
         applyProfile(parsed)
         setJobsRefreshKey((key) => key + 1)
@@ -113,12 +128,9 @@ export default function RelevantJobs() {
     useEffect(() => {
         if (authLoading) return
 
-        if (!user) {
-            setDesignation(null)
-            setLocation(null)
-            setProfileLoading(false)
-            return
-        }
+        // Signed out: the logged-out branch renders below regardless of these,
+        // and signing in re-runs this effect, so there is nothing to reset.
+        if (!userId) return
 
         let cancelled = false
 
@@ -133,15 +145,16 @@ export default function RelevantJobs() {
         return () => {
             cancelled = true
         }
-    }, [authLoading, user, fetchProfile, applyProfile])
+        // refreshKey re-reads the profile after a CV upload. Jobs refetch only if
+        // that actually changed the designation or location, so an unchanged CV
+        // costs one cheap GET rather than five provider calls.
+    }, [authLoading, userId, refreshKey, fetchProfile, applyProfile])
+
+    const hasQuery = Boolean(designation) && isRelevantJobsConfigured()
 
     useEffect(() => {
-        if (!designation || !isRelevantJobsConfigured()) {
-            setJobs([])
-            setFailedSources([])
-            setJobsError(null)
-            return
-        }
+        // `designation` repeated for the type narrowing hasQuery cannot provide.
+        if (!hasQuery || !designation) return
 
         const ctrl = new AbortController()
 
@@ -183,74 +196,120 @@ export default function RelevantJobs() {
         })()
 
         return () => ctrl.abort()
-    }, [designation, location, jobsRefreshKey])
+    }, [hasQuery, designation, location, jobsRefreshKey])
 
-    if (authLoading || profileLoading) {
+    if (authLoading) {
         return null
     }
 
-    if(!user){
-        return <div className="rounded-xl border border-neutral-200 bg-neutral-50 px-6 py-10 text-center text-sm text-neutral-600">Please login and save CV details to view relevant jobs</div>
+    // Signed out is its own terminal state — no profile to read, nothing to search.
+    if (!user) {
+        return (
+            <>
+                <section className="mb-8 rounded-2xl border border-[#e6e6e6]/75 bg-white px-6 py-10 text-center shadow-[0_1px_8px_rgba(0,0,0,0.05)]">
+                    <h2 className="text-base font-semibold text-neutral-900">
+                        Relevant jobs
+                    </h2>
+                    <p className="mx-auto mt-1 max-w-md text-[13px] text-neutral-600">
+                        Sign in and save your CV details to see roles matched to your
+                        designation, pulled from every provider at once.
+                    </p>
+                    <button
+                        type="button"
+                        onClick={() => setAuthDialogOpen(true)}
+                        className="cmn-button mt-4"
+                    >
+                        Sign in
+                    </button>
+                </section>
+
+                {/* Signing in here keeps the visitor on the page — the same reason
+                    the CV upload uses a dialog rather than routing to /login. */}
+                <AuthDialog
+                    open={authDialogOpen}
+                    onOpenChange={setAuthDialogOpen}
+                    description="Sign in to see jobs matched to your CV."
+                />
+            </>
+        )
     }
+
+    // Without a designation there is nothing to search, so show nothing rather
+    // than results left over from a previous one.
+    const visibleJobs = hasQuery ? jobs : []
+    const visibleError = hasQuery ? jobsError : null
+    const visibleFailedSources = hasQuery ? failedSources : []
+
+    // The profile read and the job search are one wait as far as the user is
+    // concerned; the section stays on screen for both rather than appearing late.
+    const isSearching = profileLoading || jobsLoading
 
     return (
         <section className="mb-8 rounded-2xl border border-[#e6e6e6]/75 bg-white p-3 md:p-4 shadow-[0_1px_8px_rgba(0,0,0,0.05)]">
             <div className="mb-4 flex flex-wrap items-start justify-between gap-3">
                 <div>
-                    <div className="lex items-center gap-2">
+                    <div className="flex items-center gap-2">
                         <h2 className="text-base font-semibold text-neutral-900">
                             Relevant jobs
                         </h2>
                     </div>
                     <p className="text-[13px] text-neutral-600">
-                        Listings matched to your designation{' '}
-                        <span className="font-medium text-neutral-800">
-                            {designation}
-                        </span>
-                        {location ? (
+                        {profileLoading ? (
+                            'Matching open roles to your CV…'
+                        ) : designation ? (
                             <>
-                                {' '}
-                                in{' '}
+                                Listings matched to your designation{' '}
                                 <span className="font-medium text-neutral-800">
-                                    {location}
+                                    {designation}
                                 </span>
+                                {location ? (
+                                    <>
+                                        {' '}
+                                        in{' '}
+                                        <span className="font-medium text-neutral-800">
+                                            {location}
+                                        </span>
+                                    </>
+                                ) : null}
                             </>
-                        ) : null}
+                        ) : (
+                            'Add a designation on the CV details page to see matched roles.'
+                        )}
                     </p>
                 </div>
                 {/* Refresh button */}
-                <button className="cmn-button-secondary" disabled={jobsLoading} onClick={handleRefresh}>
-                    <RefreshCcw className={`${jobsLoading ? 'animate-spin' : ''} h-3 w-3`} aria-hidden />
-                    {jobsLoading ? 'Refreshing' : 'Refresh'}
+                <button className="cmn-button-secondary" disabled={isSearching} onClick={handleRefresh}>
+                    <RefreshCcw className={`${isSearching ? 'animate-spin' : ''} h-3 w-3`} aria-hidden />
+                    {isSearching ? 'Refreshing' : 'Refresh'}
                 </button>
             </div>
 
-            {jobsLoading ? (
+            {isSearching ? (
                 <div className="flex flex-col text-sm items-center justify-center gap-2 rounded-xl border border-neutral-200 bg-neutral-50 py-12 text-neutral-600">
                     <Loader className="h-5 w-5 animate-spin" aria-hidden />
                     Searching jobs
                 </div>
-            ) : jobsError ? (
+            ) : visibleError ? (
                 <div
                     role="alert"
                     className="flex items-start gap-2 rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-800"
                 >
                     <AlertCircle className="mt-0.5 h-4 w-4 shrink-0" aria-hidden />
-                    <span>{jobsError}</span>
+                    <span>{visibleError}</span>
                 </div>
-            ) : jobs.length === 0 ? (
+            ) : visibleJobs.length === 0 ? (
                 <div className="rounded-xl border border-neutral-200 bg-neutral-50 px-6 py-10 text-center text-sm text-neutral-600">
                     No matching jobs found right now. Try updating your designation on the details page.
                 </div>
             ) : (
                 <div className="flex flex-col gap-3">
-                    {jobs.map((job) => (
+                    {visibleJobs.map((job) => (
                         <JobCard key={job.id} job={job} />
                     ))}
                 </div>
             )}
 
-            {!jobsLoading && failedSources.length > 0 && jobs.length > 0 ? (
+            {!isSearching && visibleFailedSources.length > 0 && visibleJobs.length > 0 ? (
                 <p className="mt-3 text-xs text-neutral-500">
                     Some providers could not be reached; showing results from
                     others.

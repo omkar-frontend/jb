@@ -1,10 +1,13 @@
 import { useEffect, useState } from "react";
 import axios from "axios";
+import { api } from "../../lib/api";
 import Select from "react-select";
 import SubHeader from "../../components/SubHeader";
 import PortalJobCard from "../../components/PortalJobCard";
 import { Checkbox } from "@/components/ui/checkbox";
 import { selectStyles } from "../../lib/multiSelectStyles";
+import { usePageReset } from "../../hooks/usePageReset";
+import InlineLoading from "../../components/InlineLoading";
 
 const FILTER_DEBOUNCE_MS = 500;
 const JOBS_PER_PAGE_HINT = 10;
@@ -206,7 +209,6 @@ function jobCardHref(job: JSearchJob): string | null {
 
 export default function JSearch() {
     const [query, setQuery] = useState("Software developer");
-    const [page, setPage] = useState(1);
     const [country, setCountry] = useState<Option | null>(
         COUNTRY_OPTIONS.find((c) => c.value === "us") ?? null,
     );
@@ -233,21 +235,20 @@ export default function JSearch() {
         FILTER_DEBOUNCE_MS,
     );
 
-    const backendUrl = import.meta.env.VITE_BACKEND_URL;
 
-    useEffect(() => {
-        setPage(1);
-    }, [
+    const filterSignature = [
         debouncedQuery,
         country,
         language,
         datePosted,
         remoteOnly,
-        employmentSel,
-        requirementsSel,
+        employmentSel.join(","),
+        requirementsSel.join(","),
         debouncedRadius,
         debouncedExclude,
-    ]);
+    ].join("|");
+
+    const [page, setPage] = usePageReset(filterSignature, 1);
 
     useEffect(() => {
         const ctrl = new AbortController();
@@ -289,8 +290,8 @@ export default function JSearch() {
                 const ex = debouncedExclude.trim();
                 if (ex) params.exclude_job_publishers = ex;
 
-                const response = await axios.get<SearchApiResponse>(
-                    `${backendUrl}/jsearch/search`,
+                const response = await api.get<SearchApiResponse>(
+                    `/jsearch/search`,
                     {
                         signal: ctrl.signal,
                         params,
@@ -320,7 +321,6 @@ export default function JSearch() {
 
         return () => ctrl.abort();
     }, [
-        backendUrl,
         page,
         debouncedQuery,
         country,
@@ -519,11 +519,7 @@ export default function JSearch() {
                                     : ""}
                                 {country ? ` · ${country.label}` : ""}
                             </p>
-                            {loading && (
-                                <p className="text-sm text-neutral-500">
-                                    Loading…
-                                </p>
-                            )}
+                            {loading && <InlineLoading />}
                             {!loading && error && (
                                 <p className="text-sm text-red-600">{error}</p>
                             )}
