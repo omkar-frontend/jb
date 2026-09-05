@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { AlertCircle, Loader, RefreshCcw } from 'lucide-react'
 import { useAuth } from '../context/AuthContext'
 import {
@@ -68,7 +68,12 @@ function JobCard({ job }: { job: RelevantJob }) {
     return <div className={cardClassName}>{inner}</div>
 }
 
-export default function RelevantJobs() {
+type RelevantJobsProps = {
+    /** Bumped by the parent when the saved CV changes, so the profile is re-read. */
+    refreshKey?: number
+}
+
+export default function RelevantJobs({ refreshKey = 0 }: RelevantJobsProps) {
     const { user, loading: authLoading } = useAuth()
     // Effects key on the id so a token refresh does not refetch everything.
     const userId = user?.id ?? null
@@ -80,6 +85,9 @@ export default function RelevantJobs() {
     const [jobsError, setJobsError] = useState<string | null>(null)
     const [failedSources, setFailedSources] = useState<string[]>([])
     const [jobsRefreshKey, setJobsRefreshKey] = useState(0)
+    // The whole section renders null while profileLoading, so only the first
+    // load should raise it — a refresh must not blink the section out.
+    const hasLoadedProfileRef = useRef(false)
 
     const fetchProfile = useCallback(async () => {
         try {
@@ -125,17 +133,21 @@ export default function RelevantJobs() {
         let cancelled = false
 
         void (async () => {
-            setProfileLoading(true)
+            if (!hasLoadedProfileRef.current) setProfileLoading(true)
             const parsed = await fetchProfile()
             if (cancelled) return
             applyProfile(parsed)
+            hasLoadedProfileRef.current = true
             setProfileLoading(false)
         })()
 
         return () => {
             cancelled = true
         }
-    }, [authLoading, userId, fetchProfile, applyProfile])
+        // refreshKey re-reads the profile after a CV upload. Jobs refetch only if
+        // that actually changed the designation or location, so an unchanged CV
+        // costs one cheap GET rather than five provider calls.
+    }, [authLoading, userId, refreshKey, fetchProfile, applyProfile])
 
     useEffect(() => {
         if (!designation || !isRelevantJobsConfigured()) {

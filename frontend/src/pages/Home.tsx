@@ -1,3 +1,4 @@
+import { useState } from "react";
 import { useNavigate } from "react-router-dom";
 import CvUpload from "../components/CvUpload";
 import RelevantJobs from "../components/RelevantJobs";
@@ -60,13 +61,16 @@ const portals: {
 
 export default function Home() {
     const navigate = useNavigate();
+    // CvUpload and RelevantJobs are siblings; this is how the upload tells the
+    // job list that the saved CV changed.
+    const [cvVersion, setCvVersion] = useState(0);
 
     return (
         <div className="min-h-[calc(100dvh)] bg-white p-5 text-neutral-900 md:px-40 md:py-10">
             <div className="flex flex-col gap-4">
-                <CvUpload />
+                <CvUpload onCvUpdated={() => setCvVersion((v) => v + 1)} />
                 {/* Relevant jobs */}
-                <RelevantJobs />
+                <RelevantJobs refreshKey={cvVersion} />
                 {/* Job portals */}
                 <div className="grid grid-cols-1 gap-4 sm:grid-cols-3 lg:grid-cols-4">
                     {
