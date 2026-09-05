@@ -666,6 +666,59 @@ app.put("/cv/profile", requireAuth, asyncHandler(async (req, res) => {
 }));
 
 /**
+ * Identical proxy requests repeat constantly — every visitor's Home page asks
+ * for the same categories, and popular designations produce the same searches.
+ * SerpAPI and JSearch bill per call, so serving those from memory for a few
+ * minutes is the difference between one upstream call and hundreds.
+ *
+ * Only successful responses are stored: an upstream failure must be retried,
+ * not remembered. Nothing user-specific is cached — these routes are the public
+ * job-provider proxies, never /auth/me or /cv/profile.
+ */
+const RESPONSE_CACHE_MAX_ENTRIES = 500;
+const responseCache = new Map();
+
+function cacheKeyFor(req) {
+  const params = Object.entries(req.query)
+    .map(([k, v]) => [k, String(v)])
+    .sort(([a], [b]) => a.localeCompare(b));
+  return `${req.path}?${new URLSearchParams(params).toString()}`;
+}
+
+function cacheResponse(ttlMs) {
+  return (req, res, next) => {
+    const key = cacheKeyFor(req);
+
+    const hit = responseCache.get(key);
+    if (hit && Date.now() - hit.at < ttlMs) {
+      res.set("X-Cache", "HIT");
+      return res.json(hit.body);
+    }
+    if (hit) responseCache.delete(key);
+
+    const sendJson = res.json.bind(res);
+    res.json = (body) => {
+      if (res.statusCode === 200 && body && body.success !== false) {
+        // Map keeps insertion order, so the first key is the oldest entry.
+        if (responseCache.size >= RESPONSE_CACHE_MAX_ENTRIES) {
+          const oldest = responseCache.keys().next().value;
+          if (oldest !== undefined) responseCache.delete(oldest);
+        }
+        responseCache.set(key, { at: Date.now(), body });
+      }
+      res.set("X-Cache", "MISS");
+      return sendJson(body);
+    };
+
+    next();
+  };
+}
+
+const CACHE_TTL_CATEGORIES = 30 * MINUTE;
+const CACHE_TTL_SEARCH = 5 * MINUTE;
+const CACHE_TTL_JOB_DETAILS = 30 * MINUTE;
+
+/**
  * Upstream failures must not reach the browser verbatim. The provider's own
  * error text describes OUR account (plan tier, quota state, whether the key is
  * valid), and transport errors expose infrastructure detail. Reusing the
@@ -811,7 +864,7 @@ const adzunaRequest = async (urlPath, res, extraQueryParams = {}) => {
   }
 };
 
-app.get("/adzuna/categories", freeSearchLimiter, asyncHandler(async (req, res) => {
+app.get("/adzuna/categories", freeSearchLimiter, cacheResponse(CACHE_TTL_CATEGORIES), asyncHandler(async (req, res) => {
   await adzunaRequest("/jobs/gb/categories", res);
 }));
 
@@ -819,7 +872,7 @@ app.get("/adzuna/categories", freeSearchLimiter, asyncHandler(async (req, res) =
  * Mirrors Adzuna: GET /jobs/{country}/search/{page}?category={tag}
  * Example: GET /adzuna/jobs/gb/search/0?category=it-jobs
  */
-app.get("/adzuna/jobs/:country/search/:page", freeSearchLimiter, asyncHandler(async (req, res) => {
+app.get("/adzuna/jobs/:country/search/:page", freeSearchLimiter, cacheResponse(CACHE_TTL_SEARCH), asyncHandler(async (req, res) => {
   const { country, page } = req.params;
   const normalizedCountry =
     country != null && String(country).trim() !== ""
@@ -870,7 +923,7 @@ app.get("/adzuna/jobs/:country/search/:page", freeSearchLimiter, asyncHandler(as
 }));
 
 // GET job list from SERP (Google Jobs)
-app.get("/serp/jobs", paidSearchLimiter, asyncHandler(async (req, res) => {
+app.get("/serp/jobs", paidSearchLimiter, cacheResponse(CACHE_TTL_SEARCH), asyncHandler(async (req, res) => {
   const apiKey = process.env.SERP_API_KEY;
   if (!apiKey) {
     return res.status(500).json({ success: false, error: "SERP API key is not set" });
@@ -939,7 +992,7 @@ const himalayasHttpConfig = {
   },
 };
 
-app.get("/himalayas/jobs/search", freeSearchLimiter, asyncHandler(async (req, res) => {
+app.get("/himalayas/jobs/search", freeSearchLimiter, cacheResponse(CACHE_TTL_SEARCH), asyncHandler(async (req, res) => {
   try {
     const response = await axios.get(
       "https://himalayas.app/jobs/api/search",
@@ -954,7 +1007,7 @@ app.get("/himalayas/jobs/search", freeSearchLimiter, asyncHandler(async (req, re
   }
 }));
 
-app.get("/himalayas/jobs/browse", freeSearchLimiter, asyncHandler(async (req, res) => {
+app.get("/himalayas/jobs/browse", freeSearchLimiter, cacheResponse(CACHE_TTL_SEARCH), asyncHandler(async (req, res) => {
   try {
     const response = await axios.get("https://himalayas.app/jobs/api", {
       ...himalayasHttpConfig,
@@ -967,7 +1020,7 @@ app.get("/himalayas/jobs/browse", freeSearchLimiter, asyncHandler(async (req, re
 }));
 
 /** Proxies Remotive public API (browser-safe; upstream may not send CORS headers). */
-app.get("/remotive/remote-jobs", freeSearchLimiter, asyncHandler(async (req, res) => {
+app.get("/remotive/remote-jobs", freeSearchLimiter, cacheResponse(CACHE_TTL_SEARCH), asyncHandler(async (req, res) => {
   try {
     const response = await axios.get(
       "https://remotive.com/api/remote-jobs",
@@ -983,7 +1036,7 @@ app.get("/remotive/remote-jobs", freeSearchLimiter, asyncHandler(async (req, res
 }));
 
 /** Remotive job categories (names/slugs for the `category` filter). */
-app.get("/remotive/remote-jobs/categories", freeSearchLimiter, asyncHandler(async (req, res) => {
+app.get("/remotive/remote-jobs/categories", freeSearchLimiter, cacheResponse(CACHE_TTL_CATEGORIES), asyncHandler(async (req, res) => {
   try {
     const response = await axios.get(
       "https://remotive.com/api/remote-jobs/categories",
@@ -1049,7 +1102,7 @@ const jsearchAllowedSearchParams = new Set([
   "fields",
 ]);
 
-app.get("/jsearch/search", paidSearchLimiter, asyncHandler(async (req, res) => {
+app.get("/jsearch/search", paidSearchLimiter, cacheResponse(CACHE_TTL_SEARCH), asyncHandler(async (req, res) => {
   const apiKey = process.env.JSEARCH_API_KEY;
   if (!apiKey) {
     return res
@@ -1091,7 +1144,7 @@ const jsearchAllowedJobDetailsParams = new Set([
   "fields",
 ]);
 
-app.get("/jsearch/job-details", paidSearchLimiter, asyncHandler(async (req, res) => {
+app.get("/jsearch/job-details", paidSearchLimiter, cacheResponse(CACHE_TTL_JOB_DETAILS), asyncHandler(async (req, res) => {
   const apiKey = process.env.JSEARCH_API_KEY;
   if (!apiKey) {
     return res

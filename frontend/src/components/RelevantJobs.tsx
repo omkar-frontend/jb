@@ -8,6 +8,7 @@ import {
 } from '../lib/cvProfile'
 import {
     fetchRelevantJobs,
+    invalidateRelevantJobs,
     isRelevantJobsConfigured,
     type RelevantJob,
 } from '../lib/relevantJobs'
@@ -117,6 +118,8 @@ export default function RelevantJobs({ refreshKey = 0 }: RelevantJobsProps) {
     }, [])
 
     const handleRefresh = useCallback(async () => {
+        // Refresh means refresh: skip the cached fan-out.
+        invalidateRelevantJobs()
         const parsed = await fetchProfile()
         applyProfile(parsed)
         setJobsRefreshKey((key) => key + 1)
