@@ -8,6 +8,7 @@ import PortalJobCard from "../../components/PortalJobCard";
 import { Checkbox } from "@/components/ui/checkbox";
 import { selectStyles } from "../../lib/multiSelectStyles";
 import { usePageReset } from "../../hooks/usePageReset";
+import InlineLoading from "../../components/InlineLoading";
 
 const FILTER_DEBOUNCE_MS = 500;
 
@@ -461,11 +462,7 @@ export default function Himalayas() {
                                     : ""}
                                 {worldwideOnly ? " · worldwide-friendly" : ""}
                             </p>
-                            {loading && (
-                                <p className="text-sm text-neutral-500">
-                                    Loading…
-                                </p>
-                            )}
+                            {loading && <InlineLoading />}
                             {!loading && error && (
                                 <p className="text-sm text-red-600">{error}</p>
                             )}

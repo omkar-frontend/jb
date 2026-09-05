@@ -8,6 +8,7 @@ import PortalJobCard from "../../components/PortalJobCard";
 import { Checkbox } from "@/components/ui/checkbox";
 import { selectStyles } from "../../lib/multiSelectStyles";
 import { usePageReset } from "../../hooks/usePageReset";
+import InlineLoading from "../../components/InlineLoading";
 
 const ADZUNA_FIRST_PAGE = 1;
 const FILTER_DEBOUNCE_MS = 500;
@@ -443,11 +444,7 @@ export default function Adzuna() {
                                     </span>{" "}
                                     ({selectedCountry.label}, page {currentPage})
                                 </p>
-                                {jobsLoading && (
-                                    <p className="text-sm text-neutral-500">
-                                        Loading…
-                                    </p>
-                                )}
+                                {jobsLoading && <InlineLoading />}
                                 {!jobsLoading && jobsError && (
                                     <p className="text-sm text-red-600">
                                         {jobsError}

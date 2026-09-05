@@ -6,6 +6,7 @@ import SubHeader from "../../components/SubHeader";
 import PortalJobCard from "../../components/PortalJobCard";
 import { selectStyles } from "../../lib/multiSelectStyles";
 import { usePageReset } from "../../hooks/usePageReset";
+import InlineLoading from "../../components/InlineLoading";
 
 const FILTER_DEBOUNCE_MS = 500;
 
@@ -559,9 +560,7 @@ export default function GoogleJobs() {
                                     (debouncedLocation.trim() ||
                                         selectedLocation.value)}
                             </p>
-                            {loading && (
-                                <p className="text-sm text-neutral-500">Loading…</p>
-                            )}
+                            {loading && <InlineLoading />}
                             {!loading && error && (
                                 <p className="text-sm text-red-600">{error}</p>
                             )}

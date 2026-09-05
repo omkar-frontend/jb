@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState } from 'react'
 import { AlertCircle, Loader, RefreshCcw } from 'lucide-react'
+import AuthDialog from './AuthDialog'
 import { useAuth } from '../context/AuthContext'
 import {
     getCvProfile,
@@ -85,6 +86,7 @@ export default function RelevantJobs({ refreshKey = 0 }: RelevantJobsProps) {
     const [jobsError, setJobsError] = useState<string | null>(null)
     const [failedSources, setFailedSources] = useState<string[]>([])
     const [jobsRefreshKey, setJobsRefreshKey] = useState(0)
+    const [authDialogOpen, setAuthDialogOpen] = useState(false)
 
     const fetchProfile = useCallback(async () => {
         try {
@@ -199,7 +201,34 @@ export default function RelevantJobs({ refreshKey = 0 }: RelevantJobsProps) {
 
     // Signed out is its own terminal state — no profile to read, nothing to search.
     if (!user) {
-        return <div className="rounded-xl border border-neutral-200 bg-neutral-50 px-6 py-10 text-center text-sm text-neutral-600">Please login and save CV details to view relevant jobs</div>
+        return (
+            <>
+                <section className="mb-8 rounded-2xl border border-[#e6e6e6]/75 bg-white px-6 py-10 text-center shadow-[0_1px_8px_rgba(0,0,0,0.05)]">
+                    <h2 className="text-base font-semibold text-neutral-900">
+                        Relevant jobs
+                    </h2>
+                    <p className="mx-auto mt-1 max-w-md text-[13px] text-neutral-600">
+                        Sign in and save your CV details to see roles matched to your
+                        designation, pulled from every provider at once.
+                    </p>
+                    <button
+                        type="button"
+                        onClick={() => setAuthDialogOpen(true)}
+                        className="cmn-button mt-4"
+                    >
+                        Sign in
+                    </button>
+                </section>
+
+                {/* Signing in here keeps the visitor on the page — the same reason
+                    the CV upload uses a dialog rather than routing to /login. */}
+                <AuthDialog
+                    open={authDialogOpen}
+                    onOpenChange={setAuthDialogOpen}
+                    description="Sign in to see jobs matched to your CV."
+                />
+            </>
+        )
     }
 
     // Without a designation there is nothing to search, so show nothing rather

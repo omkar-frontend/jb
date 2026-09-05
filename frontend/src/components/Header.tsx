@@ -12,24 +12,27 @@ export default function Header() {
     const initials = userLabel.slice(0, 1).toUpperCase()
 
     return (
-        <header className="sticky top-0 z-10 flex items-center justify-between border-b border-neutral-200 bg-white/95 p-4 text-neutral-900 backdrop-blur-sm">
-            <Link to="/">
-                <p className="text-center text-xl font-semibold">
+        <header className="sticky top-0 z-10 flex items-center justify-between gap-2 border-b border-neutral-200 bg-white/95 px-3 py-3 text-neutral-900 backdrop-blur-sm sm:p-4">
+            <Link to="/" className="min-w-0 shrink">
+                <p className="truncate text-lg font-semibold sm:text-xl">
                     Jobs <span className="text-emerald-600">Board</span>
                 </p>
             </Link>
 
-            <nav className="flex items-center gap-4">
+            {/* shrink-0: the nav keeps its size and the brand truncates instead */}
+            <nav className="flex shrink-0 items-center gap-2 sm:gap-4">
                 {loading ? (
                     <Loader className="h-5 w-5 animate-spin text-neutral-400" aria-label="Loading" />
                 ) : user ? (
                     <>
                         <Link
                             to="/details"
-                            className="cmn-button-secondary"
+                            className="cmn-button-secondary max-sm:px-2.5"
                         >
-                            <FileText className="h-4 w-4" aria-hidden />
-                            CV Details
+                            <FileText className="h-4 w-4 shrink-0" aria-hidden />
+                            {/* sr-only rather than hidden: the link keeps its
+                                accessible name when the label is not painted. */}
+                            <span className="max-sm:sr-only">CV Details</span>
                         </Link>
                         <Popover open={accountMenuOpen} onOpenChange={setAccountMenuOpen}>
                             <PopoverTrigger
@@ -69,13 +72,13 @@ export default function Header() {
                     <>
                         <Link
                             to="/login"
-                            className="cmn-button-text"
+                            className="cmn-button-text max-sm:px-2.5"
                         >
                             Sign in
                         </Link>
                         <Link
                             to="/signup"
-                            className="cmn-button"
+                            className="cmn-button max-sm:px-3"
                         >
                             Sign up
                         </Link>
