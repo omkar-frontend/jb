@@ -97,6 +97,42 @@ function Field({
     )
 }
 
+/**
+ * The saved value is a string[], but parsing on every keystroke deletes the
+ * newline the user just typed — `linesToList` filters empty lines, so pressing
+ * Enter re-rendered the textarea without it and a second line was impossible.
+ * Hold the raw text locally while editing and commit the parsed list on blur.
+ */
+function OtherLinksField({
+    value,
+    onChange,
+}: {
+    value: string[]
+    onChange: (next: string[]) => void
+}) {
+    const [text, setText] = useState(() => listToLines(value))
+    const [committed, setCommitted] = useState(value)
+
+    // Re-sync when the list is replaced from outside (profile load, or our own
+    // commit normalising the text). Adjusting state during render rather than in
+    // an effect avoids a second render pass with stale text on screen.
+    if (value !== committed) {
+        setCommitted(value)
+        setText(listToLines(value))
+    }
+
+    return (
+        <textarea
+            className={`${inputClass} resize-none`}
+            rows={4}
+            value={text}
+            placeholder="e.g. https://twitter.com"
+            onChange={(e) => setText(e.target.value)}
+            onBlur={() => onChange(linesToList(text))}
+        />
+    )
+}
+
 function Section({
     title,
     description,
@@ -774,19 +810,11 @@ export default function Details() {
                                 </Field>
                             </div>
                             <Field label="Other links (one per line)">
-                                <textarea
-                                    className={`${inputClass} resize-none`}
-                                    rows={4}
-                                    value={listToLines(form.links.other)}
-                                    placeholder="e.g. https://twitter.com"
-                                    onChange={(e) =>
+                                <OtherLinksField
+                                    value={form.links.other}
+                                    onChange={(other) =>
                                         updateForm({
-                                            links: {
-                                                ...form.links,
-                                                other: linesToList(
-                                                    e.target.value
-                                                ),
-                                            },
+                                            links: { ...form.links, other },
                                         })
                                     }
                                 />

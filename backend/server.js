@@ -29,8 +29,74 @@ const app = express();
 
 const PORT = Number(process.env.PORT) || 5001;
 
+const IS_PRODUCTION = process.env.NODE_ENV === "production";
+
+/** Browsers send an origin with no trailing slash, so a configured
+ *  "https://site.com/" would silently never match. */
+function normalizeOrigin(value) {
+  return String(value ?? "").trim().replace(/\/+$/, "");
+}
+
+/** FRONTEND_URL accepts a comma-separated list, e.g. the prod URL plus localhost. */
+const allowedOrigins = (process.env.FRONTEND_URL ?? "")
+  .split(",")
+  .map(normalizeOrigin)
+  .filter(Boolean);
+
+/** Optional regex for Vercel-style preview deploys, e.g. ^https://jb-[a-z0-9-]+\.vercel\.app$ */
+let previewOriginPattern = null;
+if (process.env.FRONTEND_ORIGIN_REGEX) {
+  try {
+    previewOriginPattern = new RegExp(process.env.FRONTEND_ORIGIN_REGEX);
+  } catch (err) {
+    console.error(
+      `FRONTEND_ORIGIN_REGEX is not a valid regular expression: ${err.message}`
+    );
+    process.exit(1);
+  }
+}
+
+// Fail closed: in production a missing allowlist must stop the server, not
+// silently fall back to allowing every origin.
+if (IS_PRODUCTION && allowedOrigins.length === 0) {
+  console.error(
+    "FRONTEND_URL is required when NODE_ENV=production.\n" +
+      "Set it to the exact frontend origin (no trailing slash), e.g.\n" +
+      "  FRONTEND_URL=https://your-app.vercel.app\n" +
+      "Multiple origins may be comma-separated."
+  );
+  process.exit(1);
+}
+
+if (allowedOrigins.length === 0) {
+  console.warn(
+    "FRONTEND_URL is not set — allowing all origins. This is for local development only."
+  );
+}
+
+function isOriginAllowed(origin) {
+  const candidate = normalizeOrigin(origin);
+  if (allowedOrigins.includes(candidate)) return true;
+  if (previewOriginPattern?.test(candidate)) return true;
+  return false;
+}
+
 const corsOptions = {
-  origin: process.env.FRONTEND_URL ? [process.env.FRONTEND_URL] : true,
+  origin(origin, callback) {
+    // No Origin header: same-origin navigations, curl, server-to-server. CORS
+    // has nothing to protect there, and rejecting would break the logo proxy.
+    if (!origin) return callback(null, true);
+
+    // Dev convenience only — unreachable in production because of the exit above.
+    if (allowedOrigins.length === 0 && !previewOriginPattern) {
+      return callback(null, true);
+    }
+
+    if (isOriginAllowed(origin)) return callback(null, true);
+
+    console.warn(`Blocked CORS request from origin: ${origin}`);
+    return callback(null, false);
+  },
   methods: ["GET", "POST", "PUT", "DELETE", "PATCH", "OPTIONS"],
   allowedHeaders: ["Content-Type", "Authorization"],
 };
@@ -349,11 +415,20 @@ async function findProfileForUser(supabaseUser, userId) {
   return { data, error };
 }
 
+/**
+ * Express 4 does not catch promise rejections from async handlers: the
+ * rejection escapes to the process, and Node >= 15 treats an unhandled
+ * rejection as fatal — one Supabase socket reset would take the whole API
+ * down. Funnelling rejections into next() turns them into a 500 instead.
+ */
+const asyncHandler = (handler) => (req, res, next) =>
+  Promise.resolve(handler(req, res, next)).catch(next);
+
 app.get("/auth/me", requireAuth, (req, res) => {
   res.json({ success: true, data: formatAuthUser(req.authUser) });
 });
 
-app.post("/cv/extract", cvExtractLimiter, cvUpload.single("cv"), async (req, res) => {
+app.post("/cv/extract", cvExtractLimiter, cvUpload.single("cv"), asyncHandler(async (req, res) => {
   const apiKey = process.env.GEMINI_API_KEY;
   if (!apiKey) {
     return res
@@ -415,14 +490,16 @@ app.post("/cv/extract", cvExtractLimiter, cvUpload.single("cv"), async (req, res
       },
     });
   } catch (err) {
-    const message =
-      err?.message ?? err?.response?.data?.error?.message ?? "CV extraction failed";
-    console.error("CV extract error:", message);
-    res.status(502).json({ success: false, error: String(message) });
+    // Gemini errors carry quota and model detail that the user cannot act on.
+    console.error("[upstream:Gemini]", String(err?.message ?? err).slice(0, 500));
+    res.status(502).json({
+      success: false,
+      error: "Could not read your CV right now. Please try again in a moment.",
+    });
   }
-});
+}));
 
-app.get("/cv/profile", requireAuth, async (req, res) => {
+app.get("/cv/profile", requireAuth, asyncHandler(async (req, res) => {
   const supabaseUser = getSupabaseAsUser(req.accessToken);
   if (!supabaseUser) {
     return res.status(503).json({
@@ -445,9 +522,9 @@ app.get("/cv/profile", requireAuth, async (req, res) => {
     success: true,
     data: formatProfileRow(data),
   });
-});
+}));
 
-app.post("/cv/profile", requireAuth, async (req, res) => {
+app.post("/cv/profile", requireAuth, asyncHandler(async (req, res) => {
   const supabaseUser = getSupabaseAsUser(req.accessToken);
   if (!supabaseUser) {
     return res.status(503).json({
@@ -524,9 +601,9 @@ app.post("/cv/profile", requireAuth, async (req, res) => {
   }
 
   return res.status(201).json({ success: true, data: formatProfileRow(data) });
-});
+}));
 
-app.put("/cv/profile", requireAuth, async (req, res) => {
+app.put("/cv/profile", requireAuth, asyncHandler(async (req, res) => {
   const supabaseUser = getSupabaseAsUser(req.accessToken);
   if (!supabaseUser) {
     return res.status(503).json({
@@ -586,7 +663,50 @@ app.put("/cv/profile", requireAuth, async (req, res) => {
   }
 
   return res.json({ success: true, data: formatProfileRow(data) });
-});
+}));
+
+/**
+ * Upstream failures must not reach the browser verbatim. The provider's own
+ * error text describes OUR account (plan tier, quota state, whether the key is
+ * valid), and transport errors expose infrastructure detail. Reusing the
+ * upstream status is worse still: an upstream 401 is not "your session
+ * expired", and an upstream 429 is not our rate limiter — the frontend cannot
+ * tell them apart. So log the detail and answer with a gateway error.
+ *
+ * Never log err.config.url: the Adzuna key travels in the query string.
+ */
+function respondUpstreamError(res, err, provider) {
+  const upstreamStatus = err?.response?.status ?? null;
+  const body = err?.response?.data;
+  let detail;
+  if (body != null) {
+    detail = typeof body === "string" ? body : JSON.stringify(body);
+  } else {
+    detail = String(err?.message ?? err);
+  }
+  console.error(
+    `[upstream:${provider}]`,
+    upstreamStatus ? `status=${upstreamStatus}` : `code=${err?.code ?? "none"}`,
+    detail.slice(0, 500)
+  );
+
+  const timedOut =
+    err?.code === "ECONNABORTED" ||
+    err?.code === "ETIMEDOUT" ||
+    /timeout/i.test(String(err?.message ?? ""));
+
+  if (timedOut) {
+    return res.status(504).json({
+      success: false,
+      error: `${provider} took too long to respond. Please try again.`,
+    });
+  }
+
+  return res.status(502).json({
+    success: false,
+    error: `${provider} is unavailable right now. Please try again later.`,
+  });
+}
 
 /** Remotive is behind Cloudflare; default axios UA is often blocked (403). */
 const remotiveHttpConfig = {
@@ -606,7 +726,7 @@ const remotiveImageHeaders = {
 };
 
 /** Proxies job logos — direct requests to remotive.com/job/:id/logo often get 403 (hotlink / CF). */
-app.get("/remotive/job/:id/logo", async (req, res) => {
+app.get("/remotive/job/:id/logo", asyncHandler(async (req, res) => {
   const id = String(req.params.id ?? "").trim();
   if (!/^\d+$/.test(id)) {
     return res.status(400).end();
@@ -628,7 +748,7 @@ app.get("/remotive/job/:id/logo", async (req, res) => {
   } catch (err) {
     res.status(404).end();
   }
-});
+}));
 
 /**
  * `/api/remote-jobs/categories` is often blocked (403 + CF challenge) while
@@ -687,22 +807,19 @@ const adzunaRequest = async (urlPath, res, extraQueryParams = {}) => {
     );
     res.json({ success: true, data: response.data });
   } catch (err) {
-    const message =
-      err?.response?.data?.message ?? err?.message ?? "Adzuna request failed";
-    const status = err?.response?.status ?? 502;
-    res.status(status).json({ success: false, error: message });
+    respondUpstreamError(res, err, "Adzuna");
   }
 };
 
-app.get("/adzuna/categories", freeSearchLimiter, async (req, res) => {
+app.get("/adzuna/categories", freeSearchLimiter, asyncHandler(async (req, res) => {
   await adzunaRequest("/jobs/gb/categories", res);
-});
+}));
 
 /**
  * Mirrors Adzuna: GET /jobs/{country}/search/{page}?category={tag}
  * Example: GET /adzuna/jobs/gb/search/0?category=it-jobs
  */
-app.get("/adzuna/jobs/:country/search/:page", freeSearchLimiter, async (req, res) => {
+app.get("/adzuna/jobs/:country/search/:page", freeSearchLimiter, asyncHandler(async (req, res) => {
   const { country, page } = req.params;
   const normalizedCountry =
     country != null && String(country).trim() !== ""
@@ -750,10 +867,10 @@ app.get("/adzuna/jobs/:country/search/:page", freeSearchLimiter, async (req, res
     res,
     extras,
   );
-});
+}));
 
 // GET job list from SERP (Google Jobs)
-app.get("/serp/jobs", paidSearchLimiter, async (req, res) => {
+app.get("/serp/jobs", paidSearchLimiter, asyncHandler(async (req, res) => {
   const apiKey = process.env.SERP_API_KEY;
   if (!apiKey) {
     return res.status(500).json({ success: false, error: "SERP API key is not set" });
@@ -796,19 +913,19 @@ app.get("/serp/jobs", paidSearchLimiter, async (req, res) => {
 
     getJson(params, (json) => {
       if (json.error) {
-        console.error("SerpAPI error:", json.error);
-        return res.status(500).json({ success: false, error: json.error });
+        // SerpAPI reports failures in the body, not by throwing.
+        console.error("[upstream:Google Jobs]", String(json.error).slice(0, 500));
+        return res.status(502).json({
+          success: false,
+          error: "Google Jobs is unavailable right now. Please try again later.",
+        });
       }
       res.json({ success: true, data: json });
     });
   } catch (err) {
-    console.error("SERP API error:", err);
-    res.status(500).json({
-      success: false,
-      error: err.message || "Failed to fetch jobs from SERP API",
-    });
+    respondUpstreamError(res, err, "Google Jobs");
   }
-});
+}));
 
 /** Himalayas public API — proxy avoids browser CORS and keeps a single integration surface. */
 const himalayasHttpConfig = {
@@ -822,7 +939,7 @@ const himalayasHttpConfig = {
   },
 };
 
-app.get("/himalayas/jobs/search", freeSearchLimiter, async (req, res) => {
+app.get("/himalayas/jobs/search", freeSearchLimiter, asyncHandler(async (req, res) => {
   try {
     const response = await axios.get(
       "https://himalayas.app/jobs/api/search",
@@ -833,18 +950,11 @@ app.get("/himalayas/jobs/search", freeSearchLimiter, async (req, res) => {
     );
     res.json({ success: true, data: response.data });
   } catch (err) {
-    const status = err?.response?.status ?? 502;
-    const body = err?.response?.data;
-    const message =
-      (typeof body?.errors === "string" && body.errors) ||
-      (typeof body?.error === "string" && body.error) ||
-      err?.message ||
-      "Himalayas search failed";
-    res.status(status).json({ success: false, error: String(message) });
+    respondUpstreamError(res, err, "Himalayas");
   }
-});
+}));
 
-app.get("/himalayas/jobs/browse", freeSearchLimiter, async (req, res) => {
+app.get("/himalayas/jobs/browse", freeSearchLimiter, asyncHandler(async (req, res) => {
   try {
     const response = await axios.get("https://himalayas.app/jobs/api", {
       ...himalayasHttpConfig,
@@ -852,19 +962,12 @@ app.get("/himalayas/jobs/browse", freeSearchLimiter, async (req, res) => {
     });
     res.json({ success: true, data: response.data });
   } catch (err) {
-    const status = err?.response?.status ?? 502;
-    const body = err?.response?.data;
-    const message =
-      (typeof body?.errors === "string" && body.errors) ||
-      (typeof body?.error === "string" && body.error) ||
-      err?.message ||
-      "Himalayas browse failed";
-    res.status(status).json({ success: false, error: String(message) });
+    respondUpstreamError(res, err, "Himalayas");
   }
-});
+}));
 
 /** Proxies Remotive public API (browser-safe; upstream may not send CORS headers). */
-app.get("/remotive/remote-jobs", freeSearchLimiter, async (req, res) => {
+app.get("/remotive/remote-jobs", freeSearchLimiter, asyncHandler(async (req, res) => {
   try {
     const response = await axios.get(
       "https://remotive.com/api/remote-jobs",
@@ -875,15 +978,12 @@ app.get("/remotive/remote-jobs", freeSearchLimiter, async (req, res) => {
     );
     res.json({ success: true, data: response.data });
   } catch (err) {
-    const message =
-      err?.response?.data?.message ?? err?.message ?? "Remotive request failed";
-    const status = err?.response?.status ?? 502;
-    res.status(status).json({ success: false, error: String(message) });
+    respondUpstreamError(res, err, "Remotive");
   }
-});
+}));
 
 /** Remotive job categories (names/slugs for the `category` filter). */
-app.get("/remotive/remote-jobs/categories", freeSearchLimiter, async (req, res) => {
+app.get("/remotive/remote-jobs/categories", freeSearchLimiter, asyncHandler(async (req, res) => {
   try {
     const response = await axios.get(
       "https://remotive.com/api/remote-jobs/categories",
@@ -929,7 +1029,7 @@ app.get("/remotive/remote-jobs/categories", freeSearchLimiter, async (req, res) 
       note: "Using a built-in category list; refine with Search or type a category.",
     },
   });
-});
+}));
 
 /** OpenWeb Ninja JSearch — API key stays on the server (`x-api-key`). See https://www.openwebninja.com/api/jsearch/docs */
 const JSEARCH_BASE = "https://api.openwebninja.com/jsearch";
@@ -949,7 +1049,7 @@ const jsearchAllowedSearchParams = new Set([
   "fields",
 ]);
 
-app.get("/jsearch/search", paidSearchLimiter, async (req, res) => {
+app.get("/jsearch/search", paidSearchLimiter, asyncHandler(async (req, res) => {
   const apiKey = process.env.JSEARCH_API_KEY;
   if (!apiKey) {
     return res
@@ -982,19 +1082,9 @@ app.get("/jsearch/search", paidSearchLimiter, async (req, res) => {
     });
     res.json({ success: true, data: response.data });
   } catch (err) {
-    const status = err?.response?.status ?? 502;
-    const body = err?.response?.data;
-    const message =
-      (typeof body === "object" &&
-        body != null &&
-        (body.message || body.error || body.status)) ||
-      err?.message ||
-      "JSearch search failed";
-    const str =
-      typeof message === "string" ? message : JSON.stringify(message);
-    res.status(status).json({ success: false, error: String(str) });
+    respondUpstreamError(res, err, "JSearch");
   }
-});
+}));
 
 const jsearchAllowedJobDetailsParams = new Set([
   "job_id",
@@ -1003,7 +1093,7 @@ const jsearchAllowedJobDetailsParams = new Set([
   "fields",
 ]);
 
-app.get("/jsearch/job-details", paidSearchLimiter, async (req, res) => {
+app.get("/jsearch/job-details", paidSearchLimiter, asyncHandler(async (req, res) => {
   const apiKey = process.env.JSEARCH_API_KEY;
   if (!apiKey) {
     return res
@@ -1036,20 +1126,22 @@ app.get("/jsearch/job-details", paidSearchLimiter, async (req, res) => {
     });
     res.json({ success: true, data: response.data });
   } catch (err) {
-    const status = err?.response?.status ?? 502;
-    const body = err?.response?.data;
-    const message =
-      (typeof body === "object" &&
-        body != null &&
-        (body.message || body.error)) ||
-      err?.message ||
-      "JSearch job details failed";
-    const str =
-      typeof message === "string" ? message : JSON.stringify(message);
-    res.status(status).json({ success: false, error: String(str) });
+    respondUpstreamError(res, err, "JSearch");
   }
+}));
+
+// No route matched. Every other response here is JSON, so this must be too —
+// the frontend reads `error` off the body and would choke on Express's HTML.
+app.use((req, res) => {
+  res.status(404).json({
+    success: false,
+    error: `Not found: ${req.method} ${req.path.slice(0, 100)}`,
+  });
 });
 
+// Final error handler. Without one, Express's default replies with an HTML
+// stack trace whenever NODE_ENV is not "production", exposing the error text
+// and absolute server paths. Detail belongs in the logs, not the response.
 app.use((err, req, res, next) => {
   if (err instanceof multer.MulterError) {
     if (err.code === "LIMIT_FILE_SIZE") {
@@ -1059,11 +1151,30 @@ app.use((err, req, res, next) => {
     }
     return res.status(400).json({ success: false, error: err.message });
   }
-  next(err);
+
+  console.error(
+    `[error] ${req.method} ${req.originalUrl}`,
+    err?.stack ?? err?.message ?? err
+  );
+
+  // Mid-response failure: the status line is already gone, so let Express's
+  // default handler destroy the socket rather than corrupting the body.
+  if (res.headersSent) return next(err);
+
+  res.status(500).json({ success: false, error: "Internal server error" });
 });
 
 const server = app.listen(PORT, () => {
   console.log(`Server running on port ${PORT}`);
+});
+
+/**
+ * Backstop for rejections that escape a handler entirely (a stray promise in a
+ * callback, a timer). Logging keeps the process alive where Node would
+ * otherwise exit; the request that caused it still fails, but the API stays up.
+ */
+process.on("unhandledRejection", (reason) => {
+  console.error("[unhandledRejection]", reason?.stack ?? reason);
 });
 
 server.on("error", (err) => {

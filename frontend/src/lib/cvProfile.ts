@@ -61,28 +61,6 @@ type ProfileApiResponse = {
     error?: string
 }
 
-export const PENDING_CV_EXTRACT_KEY = 'jb_pending_cv_extract'
-
-export function stashPendingCvExtract(payload: CvExtractApiPayload) {
-    sessionStorage.setItem(PENDING_CV_EXTRACT_KEY, JSON.stringify(payload))
-}
-
-export function readPendingCvExtract(): CvExtractApiPayload | null {
-    const raw = sessionStorage.getItem(PENDING_CV_EXTRACT_KEY)
-    if (!raw) return null
-    try {
-        const parsed = JSON.parse(raw) as CvExtractApiPayload
-        if (parsed?.success && parsed?.data?.extracted) return parsed
-    } catch {
-        /* ignore */
-    }
-    return null
-}
-
-export function clearPendingCvExtract() {
-    sessionStorage.removeItem(PENDING_CV_EXTRACT_KEY)
-}
-
 export function parseExtractedInformation(
     input: CvExtractApiPayload | string | unknown
 ): CvExtractApiPayload | null {
@@ -189,7 +167,6 @@ export async function saveCvExtractToProfile(
             return { error: response.data.error ?? 'Could not save CV profile' }
         }
 
-        clearPendingCvExtract()
         return { error: null }
     } catch (err) {
         return { error: profileErrorMessage(err) }
@@ -212,7 +189,6 @@ export async function updateCvProfile(
             return { error: response.data.error ?? 'Could not update CV profile' }
         }
 
-        clearPendingCvExtract()
         return { error: null }
     } catch (err) {
         return { error: profileErrorMessage(err) }

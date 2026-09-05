@@ -1,5 +1,4 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { useNavigate } from "react-router-dom";
 import axios from "axios";
 import {
     AlertCircle,
@@ -16,13 +15,11 @@ import {
 import { api, isApiConfigured } from "../lib/api";
 import { useAuth } from "../context/AuthContext";
 import {
-    clearPendingCvExtract,
-    readPendingCvExtract,
     saveCvExtractToProfile,
-    stashPendingCvExtract,
     type CvExtractApiPayload,
     type CvExtracted,
 } from "../lib/cvProfile";
+import AuthDialog from "./AuthDialog";
 
 export type { CvExtracted, CvExperience, CvEducation } from "../lib/cvProfile";
 
@@ -51,20 +48,22 @@ type CvUploadProps = {
 }
 
 export default function CvUpload({ onCvUpdated }: CvUploadProps) {
-    const navigate = useNavigate();
     const { user, loading: authLoading } = useAuth();
     const inputRef = useRef<HTMLInputElement>(null);
     const [file, setFile] = useState<File | null>(null);
     const [dragOver, setDragOver] = useState(false);
     const [loading, setLoading] = useState(false);
     const [saving, setSaving] = useState(false);
-    const [saveSuccess, setSaveSuccess] = useState(false);
     const [error, setError] = useState<string | null>(null);
     const [extracted, setExtracted] = useState<CvExtracted | null>(null);
     const [extractApiResponse, setExtractApiResponse] =
         useState<CvExtractApiPayload | null>(null);
     const [uploadedName, setUploadedName] = useState<string | null>(null);
     const [profileSaved, setProfileSaved] = useState(false);
+    const [authDialogOpen, setAuthDialogOpen] = useState(false);
+    // Set when the user asked to save while signed out: the parsed CV stays in
+    // this component's state while they authenticate in the dialog.
+    const [saveAfterAuth, setSaveAfterAuth] = useState(false);
     const onCvUpdatedRef = useRef(onCvUpdated);
     onCvUpdatedRef.current = onCvUpdated;
     const autoSaveAttemptedRef = useRef(false);
@@ -75,30 +74,18 @@ export default function CvUpload({ onCvUpdated }: CvUploadProps) {
         setExtracted(null);
         setExtractApiResponse(null);
         setUploadedName(null);
-        setSaveSuccess(false);
         setSaving(false);
         setProfileSaved(true);
         autoSaveAttemptedRef.current = false;
         if (inputRef.current) inputRef.current.value = "";
     };
 
+    // Finishes the save the user asked for before signing in.
     useEffect(() => {
-        const pending = readPendingCvExtract();
-        if (!pending) return;
-
-        setExtractApiResponse(pending);
-        setExtracted(pending.data.extracted);
-        setUploadedName(pending.data.fileName);
-        setSaveSuccess(false);
-        onCvUpdatedRef.current?.(pending.data.extracted);
-    }, []);
-
-    useEffect(() => {
-        if (authLoading || !user || !extractApiResponse || saveSuccess) {
+        if (authLoading || !user || !extractApiResponse || !saveAfterAuth) {
             return;
         }
 
-        if (!readPendingCvExtract()) return;
         if (autoSaveAttemptedRef.current) return;
         autoSaveAttemptedRef.current = true;
 
@@ -111,6 +98,7 @@ export default function CvUpload({ onCvUpdated }: CvUploadProps) {
             const { error: saveError } = await saveCvExtractToProfile(apiPayload);
 
             setSaving(false);
+            setSaveAfterAuth(false);
 
             if (saveError) {
                 autoSaveAttemptedRef.current = false;
@@ -120,7 +108,7 @@ export default function CvUpload({ onCvUpdated }: CvUploadProps) {
 
             dismissPreviewAfterSave(apiPayload.data.extracted);
         })();
-    }, [authLoading, user, extractApiResponse, saveSuccess]);
+    }, [authLoading, user, extractApiResponse, saveAfterAuth]);
 
     const validateFile = (next: File): string | null => {
         if (next.size > MAX_MB * 1024 * 1024) {
@@ -139,9 +127,7 @@ export default function CvUpload({ onCvUpdated }: CvUploadProps) {
         setExtracted(null);
         setExtractApiResponse(null);
         setUploadedName(null);
-        setSaveSuccess(false);
         setProfileSaved(false);
-        clearPendingCvExtract();
         if (!next) {
             setFile(null);
             return;
@@ -198,8 +184,6 @@ export default function CvUpload({ onCvUpdated }: CvUploadProps) {
             setExtractApiResponse(payload);
             setExtracted(response.data.data.extracted);
             setUploadedName(response.data.data.fileName);
-            setSaveSuccess(false);
-            clearPendingCvExtract();
             onCvUpdated?.(response.data.data.extracted);
         } catch (err) {
             const message =
@@ -223,11 +207,10 @@ export default function CvUpload({ onCvUpdated }: CvUploadProps) {
         setExtracted(null);
         setExtractApiResponse(null);
         setUploadedName(null);
-        setSaveSuccess(false);
         setProfileSaved(false);
         setError(null);
         autoSaveAttemptedRef.current = false;
-        clearPendingCvExtract();
+        setSaveAfterAuth(false);
         if (inputRef.current) inputRef.current.value = "";
     };
 
@@ -235,10 +218,9 @@ export default function CvUpload({ onCvUpdated }: CvUploadProps) {
         if (!extractApiResponse) return;
 
         if (!user) {
-            stashPendingCvExtract(extractApiResponse);
-            navigate("/login", {
-                state: { from: "/", pendingCvSave: true },
-            });
+            // Stay on the page: the payload lives in state, not storage.
+            setSaveAfterAuth(true);
+            setAuthDialogOpen(true);
             return;
         }
 
@@ -390,7 +372,6 @@ export default function CvUpload({ onCvUpdated }: CvUploadProps) {
                         onClear={clearAll}
                         onSave={() => void handleSave()}
                         saving={saving}
-                        saveSuccess={saveSuccess}
                         isLoggedIn={Boolean(user)}
                     />
                 )}
@@ -405,6 +386,16 @@ export default function CvUpload({ onCvUpdated }: CvUploadProps) {
                     <span>Failed to extract your CV. Please try again.</span>
                 </div>
             ) : null}
+
+            <AuthDialog
+                open={authDialogOpen}
+                onOpenChange={(open) => {
+                    setAuthDialogOpen(open);
+                    // Cancelled the dialog — drop the pending intent, keep the preview.
+                    if (!open) setSaveAfterAuth(false);
+                }}
+                description="Sign in to save your parsed CV to your profile."
+            />
         </section>
     );
 }
@@ -415,7 +406,6 @@ function CvExtractedPreview({
     onClear,
     onSave,
     saving,
-    saveSuccess,
     isLoggedIn,
 }: {
     data: CvExtracted;
@@ -423,7 +413,6 @@ function CvExtractedPreview({
     onClear: () => void;
     onSave: () => void;
     saving: boolean;
-    saveSuccess: boolean;
     isLoggedIn: boolean;
 }) {
     return (
@@ -434,30 +423,21 @@ function CvExtractedPreview({
                     <p className="text-xs font-medium text-neutral-800">{fileName ?? "your CV"}</p>
                 </div>
                 <div className="flex flex-wrap items-center gap-2">
-                    {saveSuccess ? (
-                        <span className="inline-flex items-center gap-1.5 rounded-full bg-emerald-100 px-3 py-1 text-xs font-medium text-emerald-800">
-                            <CheckCircle2 className="h-3.5 w-3.5" aria-hidden />
-                            Saved to your profile
-                        </span>
-                    ) : (
-                        <button
-                            type="button"
-                            onClick={onSave}
-                            disabled={saving}
-                            className="cmn-button"
-                        >
-                            {saving ? (
-                                <>
-                                    <Loader className="h-4 w-4 animate-spin" aria-hidden />
-                                    Saving…
-                                </>
-                            ) : (
-                                <>
-                                    {isLoggedIn ? "Save to profile" : "Sign in to save"}
-                                </>
-                            )}
-                        </button>
-                    )}
+                    <button
+                        type="button"
+                        onClick={onSave}
+                        disabled={saving}
+                        className="cmn-button"
+                    >
+                        {saving ? (
+                            <>
+                                <Loader className="h-4 w-4 animate-spin" aria-hidden />
+                                Saving…
+                            </>
+                        ) : (
+                            <>{isLoggedIn ? "Save to profile" : "Sign in to save"}</>
+                        )}
+                    </button>
                     <button
                         type="button"
                         onClick={onClear}
