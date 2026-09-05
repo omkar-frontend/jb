@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import axios from "axios";
+import { api } from "../../lib/api";
 import Select from "react-select";
 import SubHeader from "../../components/SubHeader";
 import PortalJobCard from "../../components/PortalJobCard";
@@ -233,7 +234,6 @@ export default function JSearch() {
         FILTER_DEBOUNCE_MS,
     );
 
-    const backendUrl = import.meta.env.VITE_BACKEND_URL;
 
     useEffect(() => {
         setPage(1);
@@ -289,8 +289,8 @@ export default function JSearch() {
                 const ex = debouncedExclude.trim();
                 if (ex) params.exclude_job_publishers = ex;
 
-                const response = await axios.get<SearchApiResponse>(
-                    `${backendUrl}/jsearch/search`,
+                const response = await api.get<SearchApiResponse>(
+                    `/jsearch/search`,
                     {
                         signal: ctrl.signal,
                         params,
@@ -320,7 +320,6 @@ export default function JSearch() {
 
         return () => ctrl.abort();
     }, [
-        backendUrl,
         page,
         debouncedQuery,
         country,

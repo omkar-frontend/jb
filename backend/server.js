@@ -6,6 +6,8 @@ const multer = require("multer");
 const { createClient } = require("@supabase/supabase-js");
 const { GoogleGenerativeAI } = require("@google/generative-ai");
 const { getJson } = require("serpapi");
+const helmet = require("helmet");
+const rateLimit = require("express-rate-limit");
 
 dotenv.config();
 
@@ -33,8 +35,149 @@ const corsOptions = {
   allowedHeaders: ["Content-Type", "Authorization"],
 };
 
+// Browsers load the Remotive logo proxy from a different origin than this API,
+// so CORP must stay cross-origin or those <img> requests are blocked.
+app.use(
+  helmet({
+    crossOriginResourcePolicy: { policy: "cross-origin" },
+  })
+);
 app.use(cors(corsOptions));
 app.use(express.json());
+
+/**
+ * Hosting platforms (Render, Railway, Fly, nginx) put this server behind a proxy,
+ * so req.ip is the proxy's address unless we opt in. Rate limiting keys on req.ip,
+ * so getting this wrong either buckets every visitor together (limit unset) or
+ * lets clients spoof X-Forwarded-For (limit too loose). Set TRUST_PROXY=1 on such
+ * hosts; leave it unset locally.
+ */
+const TRUST_PROXY = process.env.TRUST_PROXY;
+if (TRUST_PROXY) {
+  const hops = Number(TRUST_PROXY);
+  app.set("trust proxy", Number.isFinite(hops) ? hops : TRUST_PROXY);
+}
+
+/**
+ * Verifying a JWT costs a round trip to Supabase, and optionalAuth runs on every
+ * request. Cache the lookup briefly, including negative results, so a signed-in
+ * user browsing job portals does not generate one auth call per request.
+ */
+const AUTH_CACHE_TTL_MS = 60_000;
+const AUTH_CACHE_MAX_ENTRIES = 1000;
+const authCache = new Map();
+
+function readBearerToken(req) {
+  const header = req.headers.authorization;
+  if (!header || !header.startsWith("Bearer ")) return null;
+  return header.slice(7).trim() || null;
+}
+
+async function resolveUserFromToken(token) {
+  const cached = authCache.get(token);
+  if (cached && cached.expiresAt > Date.now()) {
+    return cached.user;
+  }
+  if (cached) authCache.delete(token);
+
+  const {
+    data: { user },
+    error,
+  } = await supabase.auth.getUser(token);
+  const resolved = error || !user ? null : user;
+
+  // Map preserves insertion order, so the first key is the oldest entry.
+  if (authCache.size >= AUTH_CACHE_MAX_ENTRIES) {
+    const oldest = authCache.keys().next().value;
+    if (oldest !== undefined) authCache.delete(oldest);
+  }
+  authCache.set(token, { user: resolved, expiresAt: Date.now() + AUTH_CACHE_TTL_MS });
+
+  return resolved;
+}
+
+/**
+ * Populates req.authUser when a valid session is present, and never rejects.
+ * Anonymous access stays fully supported — this only decides who the rate
+ * limiters below apply to, and lets requireAuth stay a cheap check.
+ */
+async function optionalAuth(req, res, next) {
+  req.authUser = null;
+  req.accessToken = null;
+  req.authUnavailable = false;
+
+  const token = readBearerToken(req);
+  if (!token || !supabase) return next();
+
+  try {
+    const user = await resolveUserFromToken(token);
+    if (user) {
+      req.authUser = user;
+      req.accessToken = token;
+    }
+  } catch (err) {
+    // Supabase unreachable — treat as anonymous, but let requireAuth answer 503
+    // rather than 401 so a network blip does not look like a signed-out user.
+    req.authUnavailable = true;
+    console.error("Auth lookup failed:", err?.message ?? err);
+  }
+
+  next();
+}
+
+app.use(optionalAuth);
+
+const MINUTE = 60 * 1000;
+const HOUR = 60 * MINUTE;
+
+/**
+ * Signed-in users are exempt for now — flip `skip` here to meter them too.
+ * Anonymous callers are keyed by IP.
+ */
+function anonymousRateLimit({ windowMs, limit, error }) {
+  return rateLimit({
+    windowMs,
+    limit,
+    standardHeaders: "draft-8",
+    legacyHeaders: false,
+    skip: (req) => Boolean(req.authUser),
+    handler: (req, res) => {
+      res.status(429).json({ success: false, error });
+    },
+  });
+}
+
+/** Backstop against blunt hammering; generous enough for logo-heavy job pages. */
+const globalLimiter = anonymousRateLimit({
+  windowMs: 15 * MINUTE,
+  limit: 600,
+  error: "Too many requests. Please slow down, or sign in for unlimited access.",
+});
+
+/** Gemini bills per call, and each one carries up to 5 MB of upload. */
+const cvExtractLimiter = anonymousRateLimit({
+  windowMs: HOUR,
+  limit: 5,
+  error:
+    "CV extraction limit reached. Sign in for unlimited extractions, or try again in an hour.",
+});
+
+/** SerpAPI and JSearch bill per search. */
+const paidSearchLimiter = anonymousRateLimit({
+  windowMs: HOUR,
+  limit: 30,
+  error:
+    "Search limit reached. Sign in for unlimited searches, or try again in an hour.",
+});
+
+/** Adzuna/Himalayas/Remotive are free tiers with their own upstream quotas. */
+const freeSearchLimiter = anonymousRateLimit({
+  windowMs: HOUR,
+  limit: 120,
+  error: "Search limit reached. Sign in for unlimited searches, or try again in an hour.",
+});
+
+app.use(globalLimiter);
 
 const CV_MAX_BYTES = 5 * 1024 * 1024;
 const cvUpload = multer({
@@ -126,7 +269,8 @@ function formatAuthUser(user) {
   };
 }
 
-async function requireAuth(req, res, next) {
+/** Hard gate. optionalAuth has already done the token lookup for every request. */
+function requireAuth(req, res, next) {
   if (!supabase) {
     return res.status(503).json({
       success: false,
@@ -134,36 +278,27 @@ async function requireAuth(req, res, next) {
     });
   }
 
-  const header = req.headers.authorization;
-  if (!header || !header.startsWith("Bearer ")) {
+  if (!readBearerToken(req)) {
     return res.status(401).json({
       success: false,
       error: "Missing or invalid Authorization header",
     });
   }
 
-  const token = header.slice(7).trim();
-  if (!token) {
-    return res.status(401).json({
+  if (req.authUnavailable) {
+    return res.status(503).json({
       success: false,
-      error: "Missing or invalid Authorization header",
+      error: "Could not verify your session right now. Please try again.",
     });
   }
 
-  const {
-    data: { user },
-    error,
-  } = await supabase.auth.getUser(token);
-
-  if (error || !user) {
+  if (!req.authUser) {
     return res.status(401).json({
       success: false,
       error: "Invalid or expired session",
     });
   }
 
-  req.authUser = user;
-  req.accessToken = token;
   next();
 }
 
@@ -218,7 +353,7 @@ app.get("/auth/me", requireAuth, (req, res) => {
   res.json({ success: true, data: formatAuthUser(req.authUser) });
 });
 
-app.post("/cv/extract", cvUpload.single("cv"), async (req, res) => {
+app.post("/cv/extract", cvExtractLimiter, cvUpload.single("cv"), async (req, res) => {
   const apiKey = process.env.GEMINI_API_KEY;
   if (!apiKey) {
     return res
@@ -559,7 +694,7 @@ const adzunaRequest = async (urlPath, res, extraQueryParams = {}) => {
   }
 };
 
-app.get("/adzuna/categories", async (req, res) => {
+app.get("/adzuna/categories", freeSearchLimiter, async (req, res) => {
   await adzunaRequest("/jobs/gb/categories", res);
 });
 
@@ -567,7 +702,7 @@ app.get("/adzuna/categories", async (req, res) => {
  * Mirrors Adzuna: GET /jobs/{country}/search/{page}?category={tag}
  * Example: GET /adzuna/jobs/gb/search/0?category=it-jobs
  */
-app.get("/adzuna/jobs/:country/search/:page", async (req, res) => {
+app.get("/adzuna/jobs/:country/search/:page", freeSearchLimiter, async (req, res) => {
   const { country, page } = req.params;
   const normalizedCountry =
     country != null && String(country).trim() !== ""
@@ -618,7 +753,7 @@ app.get("/adzuna/jobs/:country/search/:page", async (req, res) => {
 });
 
 // GET job list from SERP (Google Jobs)
-app.get("/serp/jobs", async (req, res) => {
+app.get("/serp/jobs", paidSearchLimiter, async (req, res) => {
   const apiKey = process.env.SERP_API_KEY;
   if (!apiKey) {
     return res.status(500).json({ success: false, error: "SERP API key is not set" });
@@ -687,7 +822,7 @@ const himalayasHttpConfig = {
   },
 };
 
-app.get("/himalayas/jobs/search", async (req, res) => {
+app.get("/himalayas/jobs/search", freeSearchLimiter, async (req, res) => {
   try {
     const response = await axios.get(
       "https://himalayas.app/jobs/api/search",
@@ -709,7 +844,7 @@ app.get("/himalayas/jobs/search", async (req, res) => {
   }
 });
 
-app.get("/himalayas/jobs/browse", async (req, res) => {
+app.get("/himalayas/jobs/browse", freeSearchLimiter, async (req, res) => {
   try {
     const response = await axios.get("https://himalayas.app/jobs/api", {
       ...himalayasHttpConfig,
@@ -729,7 +864,7 @@ app.get("/himalayas/jobs/browse", async (req, res) => {
 });
 
 /** Proxies Remotive public API (browser-safe; upstream may not send CORS headers). */
-app.get("/remotive/remote-jobs", async (req, res) => {
+app.get("/remotive/remote-jobs", freeSearchLimiter, async (req, res) => {
   try {
     const response = await axios.get(
       "https://remotive.com/api/remote-jobs",
@@ -748,7 +883,7 @@ app.get("/remotive/remote-jobs", async (req, res) => {
 });
 
 /** Remotive job categories (names/slugs for the `category` filter). */
-app.get("/remotive/remote-jobs/categories", async (req, res) => {
+app.get("/remotive/remote-jobs/categories", freeSearchLimiter, async (req, res) => {
   try {
     const response = await axios.get(
       "https://remotive.com/api/remote-jobs/categories",
@@ -814,7 +949,7 @@ const jsearchAllowedSearchParams = new Set([
   "fields",
 ]);
 
-app.get("/jsearch/search", async (req, res) => {
+app.get("/jsearch/search", paidSearchLimiter, async (req, res) => {
   const apiKey = process.env.JSEARCH_API_KEY;
   if (!apiKey) {
     return res
@@ -868,7 +1003,7 @@ const jsearchAllowedJobDetailsParams = new Set([
   "fields",
 ]);
 
-app.get("/jsearch/job-details", async (req, res) => {
+app.get("/jsearch/job-details", paidSearchLimiter, async (req, res) => {
   const apiKey = process.env.JSEARCH_API_KEY;
   if (!apiKey) {
     return res

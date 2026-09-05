@@ -70,6 +70,8 @@ function JobCard({ job }: { job: RelevantJob }) {
 
 export default function RelevantJobs() {
     const { user, loading: authLoading } = useAuth()
+    // Effects key on the id so a token refresh does not refetch everything.
+    const userId = user?.id ?? null
     const [designation, setDesignation] = useState<string | null>(null)
     const [location, setLocation] = useState<string | null>(null)
     const [profileLoading, setProfileLoading] = useState(true)
@@ -113,7 +115,7 @@ export default function RelevantJobs() {
     useEffect(() => {
         if (authLoading) return
 
-        if (!user) {
+        if (!userId) {
             setDesignation(null)
             setLocation(null)
             setProfileLoading(false)
@@ -133,7 +135,7 @@ export default function RelevantJobs() {
         return () => {
             cancelled = true
         }
-    }, [authLoading, user, fetchProfile, applyProfile])
+    }, [authLoading, userId, fetchProfile, applyProfile])
 
     useEffect(() => {
         if (!designation || !isRelevantJobsConfigured()) {

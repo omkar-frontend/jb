@@ -1,6 +1,4 @@
-import axios from 'axios'
-
-const backendUrl = import.meta.env.VITE_BACKEND_URL as string | undefined
+import { api, isApiConfigured } from './api'
 
 export const JOBS_PER_SOURCE = 5
 
@@ -80,7 +78,7 @@ async function fetchAdzunaJobs(
     location: string | null,
     signal?: AbortSignal
 ): Promise<RelevantJob[]> {
-    const response = await axios.get<
+    const response = await api.get<
         ApiEnvelope<{
             results?: Array<{
                 id?: string
@@ -92,7 +90,7 @@ async function fetchAdzunaJobs(
                 description?: string
             }>
         }>
-    >(`${backendUrl}/adzuna/jobs/gb/search/1`, {
+    >('/adzuna/jobs/gb/search/1', {
         signal,
         params: {
             what: designation,
@@ -126,7 +124,7 @@ async function fetchSerpJobs(
     location: string | null,
     signal?: AbortSignal
 ): Promise<RelevantJob[]> {
-    const response = await axios.get<
+    const response = await api.get<
         ApiEnvelope<{
             jobs_results?: Array<{
                 job_id?: string
@@ -143,7 +141,7 @@ async function fetchSerpJobs(
                 extensions?: string[]
             }>
         }>
-    >(`${backendUrl}/serp/jobs`, {
+    >('/serp/jobs', {
         signal,
         params: {
             q: designation,
@@ -179,7 +177,7 @@ async function fetchRemotiveJobs(
     designation: string,
     signal?: AbortSignal
 ): Promise<RelevantJob[]> {
-    const response = await axios.get<
+    const response = await api.get<
         ApiEnvelope<{
             jobs?: Array<{
                 id?: number
@@ -194,7 +192,7 @@ async function fetchRemotiveJobs(
                 description?: string
             }>
         }>
-    >(`${backendUrl}/remotive/remote-jobs`, {
+    >('/remotive/remote-jobs', {
         signal,
         params: {
             search: designation,
@@ -231,7 +229,7 @@ async function fetchHimalayasJobs(
     designation: string,
     signal?: AbortSignal
 ): Promise<RelevantJob[]> {
-    const response = await axios.get<
+    const response = await api.get<
         ApiEnvelope<{
             jobs?: Array<{
                 title?: string
@@ -245,7 +243,7 @@ async function fetchHimalayasJobs(
                 guid?: string
             }>
         }>
-    >(`${backendUrl}/himalayas/jobs/search`, {
+    >('/himalayas/jobs/search', {
         signal,
         params: {
             q: designation,
@@ -284,7 +282,7 @@ async function fetchJSearchJobs(
     designation: string,
     signal?: AbortSignal
 ): Promise<RelevantJob[]> {
-    const response = await axios.get<
+    const response = await api.get<
         ApiEnvelope<{
             data?: Array<{
                 job_id?: string
@@ -303,7 +301,7 @@ async function fetchJSearchJobs(
                 job_is_remote?: boolean | null
             }>
         }>
-    >(`${backendUrl}/jsearch/search`, {
+    >('/jsearch/search', {
         signal,
         params: {
             query: `${designation} jobs`,
@@ -352,7 +350,7 @@ async function fetchJSearchJobs(
 }
 
 export function isRelevantJobsConfigured(): boolean {
-    return Boolean(backendUrl)
+    return isApiConfigured()
 }
 
 export async function fetchRelevantJobs(
@@ -363,7 +361,7 @@ export async function fetchRelevantJobs(
     jobs: RelevantJob[]
     sourceErrors: Partial<Record<JobSource, string>>
 }> {
-    if (!backendUrl) {
+    if (!isApiConfigured()) {
         return { jobs: [], sourceErrors: {} }
     }
 

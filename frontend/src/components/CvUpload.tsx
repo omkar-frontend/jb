@@ -13,6 +13,7 @@ import {
     TooltipProvider,
     TooltipTrigger,
 } from "@/components/ui/tooltip";
+import { api, isApiConfigured } from "../lib/api";
 import { useAuth } from "../context/AuthContext";
 import {
     clearPendingCvExtract,
@@ -52,7 +53,6 @@ type CvUploadProps = {
 export default function CvUpload({ onCvUpdated }: CvUploadProps) {
     const navigate = useNavigate();
     const { user, loading: authLoading } = useAuth();
-    const backendUrl = import.meta.env.VITE_BACKEND_URL as string | undefined;
     const inputRef = useRef<HTMLInputElement>(null);
     const [file, setFile] = useState<File | null>(null);
     const [dragOver, setDragOver] = useState(false);
@@ -164,7 +164,7 @@ export default function CvUpload({ onCvUpdated }: CvUploadProps) {
 
     const handleExtract = async () => {
         if (!file) return;
-        if (!backendUrl) {
+        if (!isApiConfigured()) {
             setError("Backend URL is not configured (VITE_BACKEND_URL).");
             return;
         }
@@ -176,8 +176,8 @@ export default function CvUpload({ onCvUpdated }: CvUploadProps) {
         formData.append("cv", file);
 
         try {
-            const response = await axios.post<ExtractResponse>(
-                `${backendUrl}/cv/extract`,
+            const response = await api.post<ExtractResponse>(
+                "/cv/extract",
                 formData,
                 {
                     headers: { "Content-Type": "multipart/form-data" },

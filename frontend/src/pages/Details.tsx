@@ -121,6 +121,7 @@ function Section({
 
 export default function Details() {
     const { user, loading: authLoading } = useAuth()
+    const userId = user?.id ?? null
     const [fileMeta, setFileMeta] = useState({ fileName: '', mimeType: '' })
     const [form, setForm] = useState<CvExtracted | null>(null)
     const [loading, setLoading] = useState(true)
@@ -130,7 +131,7 @@ export default function Details() {
     const [hasProfile, setHasProfile] = useState(false)
 
     useEffect(() => {
-        if (authLoading || !user) return
+        if (authLoading || !userId) return
 
         let cancelled = false
 
@@ -179,7 +180,7 @@ export default function Details() {
         return () => {
             cancelled = true
         }
-    }, [authLoading, user])
+    }, [authLoading, userId])
 
     if (!authLoading && !user) {
         return <Navigate to="/login" replace state={{ from: '/details' }} />

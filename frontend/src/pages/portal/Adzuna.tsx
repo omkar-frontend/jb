@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import axios from "axios";
+import { api } from "../../lib/api";
 import moment from "moment";
 import Select from "react-select";
 import SubHeader from "../../components/SubHeader";
@@ -165,12 +166,11 @@ export default function Adzuna() {
     const debouncedSalaryMax = useDebouncedValue(salaryMax, FILTER_DEBOUNCE_MS);
     const debouncedMaxDaysOld = useDebouncedValue(maxDaysOld, FILTER_DEBOUNCE_MS);
 
-    const backendUrl = import.meta.env.VITE_BACKEND_URL;
 
     const fetchCategories = async () => {
         try {
-            const response = await axios.get<CategoriesResponseBody>(
-                `${backendUrl}/adzuna/categories`,
+            const response = await api.get<CategoriesResponseBody>(
+                `/adzuna/categories`,
             );
             const results = response.data?.data?.results ?? [];
             setCategories(results);
@@ -210,8 +210,8 @@ export default function Adzuna() {
             setJobsLoading(true);
             setJobsError(null);
             try {
-                const response = await axios.get<JobsSearchResponseBody>(
-                    `${backendUrl}/adzuna/jobs/${selectedCountry.value}/search/${currentPage}`,
+                const response = await api.get<JobsSearchResponseBody>(
+                    `/adzuna/jobs/${selectedCountry.value}/search/${currentPage}`,
                     {
                         signal: ctrl.signal,
                         params: {
@@ -248,7 +248,6 @@ export default function Adzuna() {
 
         return () => ctrl.abort();
     }, [
-        backendUrl,
         currentPage,
         selectedCategory,
         selectedCountry,

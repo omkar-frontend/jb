@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import axios from "axios";
+import { api } from "../../lib/api";
 import moment from "moment";
 import Select from "react-select";
 import SubHeader from "../../components/SubHeader";
@@ -168,7 +169,6 @@ export default function Himalayas() {
     const debouncedCompany = useDebouncedValue(companySlug, FILTER_DEBOUNCE_MS);
     const debouncedTz = useDebouncedValue(timezone, FILTER_DEBOUNCE_MS);
 
-    const backendUrl = import.meta.env.VITE_BACKEND_URL;
 
     useEffect(() => {
         setPage(1);
@@ -215,8 +215,8 @@ export default function Himalayas() {
                 const tz = debouncedTz.trim();
                 if (tz) params.timezone = tz;
 
-                const response = await axios.get<ApiResponse>(
-                    `${backendUrl}/himalayas/jobs/search`,
+                const response = await api.get<ApiResponse>(
+                    `/himalayas/jobs/search`,
                     {
                         signal: ctrl.signal,
                         params,
@@ -246,7 +246,6 @@ export default function Himalayas() {
 
         return () => ctrl.abort();
     }, [
-        backendUrl,
         page,
         debouncedKeyword,
         country,

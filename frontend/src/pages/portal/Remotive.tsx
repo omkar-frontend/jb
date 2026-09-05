@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import axios from "axios";
+import { api } from "../../lib/api";
 import moment from "moment";
 import CreatableSelect from "react-select/creatable";
 import SubHeader from "../../components/SubHeader";
@@ -142,8 +143,8 @@ export default function Remotive() {
         const ctrl = new AbortController();
         (async () => {
             try {
-                const res = await axios.get<{ success?: boolean; data?: unknown }>(
-                    `${backendUrl}/remotive/remote-jobs/categories`,
+                const res = await api.get<{ success?: boolean; data?: unknown }>(
+                    `/remotive/remote-jobs/categories`,
                     { signal: ctrl.signal },
                 );
                 const opts = parseCategoryOptions(res.data?.data);
@@ -156,7 +157,7 @@ export default function Remotive() {
             }
         })();
         return () => ctrl.abort();
-    }, [backendUrl]);
+    }, []);
 
     useEffect(() => {
         const ctrl = new AbortController();
@@ -175,8 +176,8 @@ export default function Remotive() {
                     params.company_name = debouncedCompany.trim();
                 }
 
-                const response = await axios.get<JobsResponse>(
-                    `${backendUrl}/remotive/remote-jobs`,
+                const response = await api.get<JobsResponse>(
+                    `/remotive/remote-jobs`,
                     {
                         signal: ctrl.signal,
                         params,
@@ -203,7 +204,6 @@ export default function Remotive() {
         })();
         return () => ctrl.abort();
     }, [
-        backendUrl,
         selectedCategory,
         debouncedSearch,
         debouncedCompany,

@@ -1,5 +1,6 @@
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import axios from "axios";
+import { api } from "../../lib/api";
 import moment from "moment";
 import Select from "react-select";
 import SubHeader from "../../components/SubHeader";
@@ -302,7 +303,6 @@ const DATE_POSTED_FILTERS: StaticFilterKey[] = [
 ];
 
 export default function GoogleJobs() {
-    const backendUrl = import.meta.env.VITE_BACKEND_URL;
 
     const [jobKeyword, setJobKeyword] = useState("Software Engineer");
     const [selectedLocation, setSelectedLocation] =
@@ -364,8 +364,8 @@ export default function GoogleJobs() {
                     params.next_page_token = token;
                 }
 
-                const response = await axios.get<JobsResponseBody>(
-                    `${backendUrl}/serp/jobs`,
+                const response = await api.get<JobsResponseBody>(
+                    `/serp/jobs`,
                     {
                         signal: ctrl.signal,
                         params,
@@ -406,7 +406,6 @@ export default function GoogleJobs() {
 
         return () => ctrl.abort();
     }, [
-        backendUrl,
         debouncedLocation,
         effectiveQ,
         pageIndex,

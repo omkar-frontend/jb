@@ -62,6 +62,7 @@ function ProfileRow({
 
 export default function Profile() {
     const { user, loading: authLoading } = useAuth()
+    const userId = user?.id ?? null
     const [profile, setProfile] = useState<ProfileUser | null>(null)
     const [loading, setLoading] = useState(true)
     const [error, setError] = useState<string | null>(null)
@@ -69,7 +70,7 @@ export default function Profile() {
     useEffect(() => {
         if (authLoading) return
 
-        if (!user) {
+        if (!userId) {
             setLoading(false)
             return
         }
@@ -115,7 +116,7 @@ export default function Profile() {
         return () => {
             cancelled = true
         }
-    }, [authLoading, user])
+    }, [authLoading, userId])
 
     if (!authLoading && !user) {
         return <Navigate to="/login" replace state={{ from: '/profile' }} />
