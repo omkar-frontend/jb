@@ -251,6 +251,26 @@ const resumeTailorLimiter = rateLimit({
   },
 });
 
+/**
+ * One line instead of a whole document, so the prompt is a fraction of a tailor
+ * call and the limit can be far looser — a user polishing a resume clicks this
+ * repeatedly, and hitting a wall mid-edit is worse than the cost it saves.
+ */
+const bulletRewriteLimiter = rateLimit({
+  windowMs: HOUR,
+  limit: 60,
+  standardHeaders: "draft-8",
+  legacyHeaders: false,
+  keyGenerator: (req, res) => req.authUser?.id ?? ipKeyGenerator(req, res),
+  skipFailedRequests: true,
+  handler: (req, res) => {
+    res.status(429).json({
+      success: false,
+      error: "Too many rewrites. Please try again in a little while.",
+    });
+  },
+});
+
 /** SerpAPI and JSearch bill per search. */
 const paidSearchLimiter = anonymousRateLimit({
   windowMs: HOUR,
@@ -1329,6 +1349,106 @@ app.post(
         source,
       },
     });
+  })
+);
+
+const BULLET_REWRITE_PROMPT = `You rewrite a single resume bullet point so it reads well for a specific job.
+
+Return ONLY valid JSON (no markdown, no code fences): { "bullet": string }
+
+Rules:
+- Rewrite wording only. Never add a fact, tool, metric, employer, date or outcome that is not already in the bullet.
+- Never drop a fact that is in the bullet.
+- Lead with the part that matches the target job. The first six words decide whether the line is read.
+- Where the bullet already describes something the job names, prefer the job's wording.
+- One sentence, starting with a verb. No first person, no filler, no self-praise.
+- If the bullet is already the best version of itself, return it unchanged.`;
+
+/**
+ * Rewrites one line rather than the whole resume, so polishing a single weak
+ * bullet does not cost a full regeneration and does not disturb the other
+ * sections the user has already edited.
+ */
+app.post(
+  "/resume/bullet",
+  requireAuth,
+  bulletRewriteLimiter,
+  asyncHandler(async (req, res) => {
+    const bullet = String(req.body?.bullet ?? "").trim();
+    if (!bullet) {
+      return res
+        .status(400)
+        .json({ success: false, error: "bullet is required" });
+    }
+
+    const apiKey = process.env.GEMINI_API_KEY;
+    if (!apiKey) {
+      return res
+        .status(503)
+        .json({ success: false, error: "Gemini API key is not configured" });
+    }
+
+    const jobTitle = String(req.body?.jobTitle ?? "").trim();
+    const company = String(req.body?.company ?? "").trim();
+    const jobDescription = String(req.body?.jobDescription ?? "")
+      .trim()
+      .slice(0, 12000);
+    const entryTitle = String(req.body?.entryTitle ?? "").trim();
+    const entrySubtitle = String(req.body?.entrySubtitle ?? "").trim();
+
+    const weights = keywordWeights(jobDescription, jobTitle, company);
+
+    try {
+      const genAI = new GoogleGenerativeAI(apiKey);
+      const model = genAI.getGenerativeModel({
+        model: RESUME_MODEL,
+        generationConfig: {
+          responseMimeType: "application/json",
+          temperature: 0.4,
+        },
+      });
+
+      const result = await model.generateContent([
+        { text: BULLET_REWRITE_PROMPT },
+        {
+          text: `TARGET JOB
+Title: ${jobTitle || "(not given)"}
+Company: ${company || "(not given)"}
+Key terms: ${topKeywords(weights, 25).join(", ")}`,
+        },
+        {
+          text: `THIS BULLET BELONGS TO: ${entryTitle || "(role not given)"}${
+            entrySubtitle ? ` at ${entrySubtitle}` : ""
+          }\n\nBULLET:\n${bullet}`,
+        },
+      ]);
+
+      const parsed = parseGeminiJson(result.response.text());
+      const rewritten =
+        typeof parsed?.bullet === "string" ? parsed.bullet.trim() : "";
+
+      // A year the original never mentioned can only have been invented, and a
+      // wildly longer line means the model wrote past the one fact it was given.
+      const invented = [...yearsIn(rewritten)].some(
+        (year) => !yearsIn(bullet).has(year)
+      );
+      if (!rewritten || invented || rewritten.length > bullet.length * 2.5) {
+        return res.status(422).json({
+          success: false,
+          error: "The rewrite did not keep to your original line. Try again.",
+        });
+      }
+
+      return res.json({ success: true, data: { bullet: rewritten } });
+    } catch (err) {
+      console.error(
+        "[upstream:Gemini] bullet rewrite",
+        String(err?.message ?? err).slice(0, 500)
+      );
+      return res
+        .status(502)
+        .json({ success: false, error: "Could not rewrite that line right now." });
+    }
   })
 );
 

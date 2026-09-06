@@ -51,10 +51,13 @@ export const BLOCK_BLUEPRINTS: BlockBlueprint[] = [
         heading: 'Skills',
     },
     {
+        // 'entries', not 'text': a custom block is nearly always a heading with
+        // bullets under it, and a text block offers no way to add one. Free
+        // prose is still available through the Summary block.
         paletteId: 'block-custom',
         label: 'Custom',
-        description: 'Free text block',
-        kind: 'text',
+        description: 'Heading with bullets',
+        kind: 'entries',
         heading: 'Section',
     },
 ]

@@ -38,7 +38,27 @@ function makeEntry(
     })
 }
 
-function entryCandidates(cv: CvExtracted): Candidate[] {
+/**
+ * Which of the CV's lists a section wants. The section's own heading is the
+ * only signal available — an "entries" section is equally an Experience, a
+ * Projects or an Education block, and offering all four lists everywhere was
+ * what put degrees in the Experience picker and jobs in the Education one.
+ */
+type EntryKind = 'experience' | 'education' | 'projects' | 'certifications'
+
+function entryKindFor(heading: string): EntryKind | null {
+    const text = heading.toLowerCase()
+    if (/experience|employment|work history|career/.test(text)) return 'experience'
+    if (/education|academic|degree|university|college|school/.test(text)) return 'education'
+    if (/project|portfolio/.test(text)) return 'projects'
+    if (/certificat|licen[cs]e|course|training|credential/.test(text)) {
+        return 'certifications'
+    }
+    // A custom heading names nothing in particular, so everything stays on offer.
+    return null
+}
+
+function entryCandidates(cv: CvExtracted, heading: string): Candidate[] {
     const fromExperience = cv.experience.map((job, i) => ({
         key: `exp-${i}`,
         label: job.title || 'Untitled role',
@@ -66,7 +86,50 @@ function entryCandidates(cv: CvExtracted): Candidate[] {
         }),
     }))
 
-    return [...fromExperience, ...fromEducation]
+    const fromProjects = cv.projects.map((project, i) => ({
+        key: `prj-${i}`,
+        label: project.name || 'Untitled project',
+        sublabel:
+            [project.link, joinPeriod(project.startDate, project.endDate)]
+                .filter(Boolean)
+                .join(' · ') || null,
+        apply: makeEntry('cv-prj', i, {
+            title: project.name,
+            subtitle: project.link,
+            period: joinPeriod(project.startDate, project.endDate),
+            bullets: toBullets(project.description),
+        }),
+    }))
+
+    const fromCertifications = cv.certifications.map((cert, i) => ({
+        key: `crt-${i}`,
+        label: cert.name || 'Certification',
+        sublabel: [cert.issuer, cert.year].filter(Boolean).join(' · ') || null,
+        apply: makeEntry('cv-crt', i, {
+            title: cert.name,
+            subtitle: cert.issuer,
+            period: cert.year,
+            bullets: [],
+        }),
+    }))
+
+    switch (entryKindFor(heading)) {
+        case 'experience':
+            return fromExperience
+        case 'education':
+            return fromEducation
+        case 'projects':
+            return fromProjects
+        case 'certifications':
+            return fromCertifications
+        default:
+            return [
+                ...fromExperience,
+                ...fromProjects,
+                ...fromEducation,
+                ...fromCertifications,
+            ]
+    }
 }
 
 function tagCandidates(cv: CvExtracted): Candidate[] {
@@ -107,7 +170,7 @@ export default function CvPicker({
 
     const all =
         section.kind === 'entries'
-            ? entryCandidates(cv)
+            ? entryCandidates(cv, section.heading)
             : section.kind === 'tags'
               ? tagCandidates(cv)
               : textCandidates(cv)
@@ -140,7 +203,7 @@ export default function CvPicker({
                 // The sheet deselects on background clicks and sections select on
                 // click; neither should fire when opening this menu.
                 onClick={(e) => e.stopPropagation()}
-                className="inline-flex items-center gap-1 rounded border border-dashed border-emerald-300 px-2 py-0.5 text-[11px] text-emerald-700 hover:bg-emerald-50 print:hidden"
+                className="inline-flex items-center gap-1 rounded border border-dashed border-emerald-300 px-2 py-0.5 text-[11px] ml-2 text-emerald-700 hover:bg-emerald-50 print:hidden"
             >
                 <Plus className="h-3 w-3" aria-hidden />
                 From your CV

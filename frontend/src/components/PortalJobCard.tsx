@@ -107,6 +107,20 @@ export default function PortalJobCard({
             jobTitle: title?.trim() || null,
             company: company?.trim() || null,
             jobDescription: description?.trim() ?? "",
+            // Carried along so the builder can show the whole posting without
+            // asking the provider for it a second time.
+            job: {
+                location: location?.trim() || null,
+                salary: salary?.trim() || null,
+                jobType: jobType?.trim() || null,
+                postedAt: postedAt?.trim() || null,
+                via: via?.trim() || null,
+                logoUrl: logoUrl?.trim() || null,
+                tags,
+                meta,
+                href: cardHref,
+                applyLinks,
+            },
         };
         navigate("/resume/build", { state });
     };

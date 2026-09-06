@@ -16,11 +16,27 @@ import {
     sortableKeyboardCoordinates,
     verticalListSortingStrategy,
 } from '@dnd-kit/sortable'
-import { AlertCircle, Loader, Printer, RefreshCcw } from 'lucide-react'
+import { AlertCircle, ExternalLink, Info, Loader, Printer, RefreshCcw } from 'lucide-react'
 import { Back } from '../components/Back'
+import {
+    Dialog,
+    DialogContent,
+    DialogDescription,
+    DialogHeader,
+    DialogTitle,
+    DialogTrigger,
+} from '../components/ui/dialog'
+import {
+    Tooltip,
+    TooltipContent,
+    TooltipProvider,
+    TooltipTrigger,
+} from '../components/ui/tooltip'
 import SectionPalette from '../components/resume/SectionPalette'
 import SectionProperties from '../components/resume/SectionProperties'
-import SortableSection from '../components/resume/SortableSection'
+import SortableSection, {
+    type RebuildBullet,
+} from '../components/resume/SortableSection'
 import { sectionFromBlueprint, type BlockBlueprint } from '../components/resume/blocks'
 import { useAuth } from '../context/AuthContext'
 import {
@@ -31,6 +47,7 @@ import {
 import {
     clearCachedResume,
     readCachedResume,
+    rebuildBullet as rebuildBulletRequest,
     tailorCacheKey,
     tailorResume,
     writeCachedResume,
@@ -39,10 +56,26 @@ import {
     type SectionStyle,
 } from '../lib/resume'
 
+/** Everything the job card knew, carried through the router so the builder can
+ *  show the full posting without asking the provider for it again. */
+export type ResumeJobDetails = {
+    location: string | null
+    salary: string | null
+    jobType: string | null
+    postedAt: string | null
+    via: string | null
+    logoUrl: string | null
+    tags: string[]
+    meta: string[]
+    href: string | null
+    applyLinks: { title: string; link: string }[]
+}
+
 export type ResumeBuilderState = {
     jobTitle: string | null
     company: string | null
     jobDescription: string
+    job?: ResumeJobDetails
 }
 
 const DEFAULT_ACCENT = '#059669'
@@ -71,12 +104,108 @@ function CanvasSheet({
             onClick={(e) => {
                 if (e.target === e.currentTarget) onDeselect()
             }}
-            className={`mx-auto w-full max-w-[210mm] rounded-xl border bg-white p-5 shadow-sm transition-colors print:max-w-none print:rounded-none print:border-0 print:p-0 print:shadow-none ${
+            className={`mx-auto w-full max-w-[210mm] rounded-xl border bg-white p-3 shadow-sm transition-colors print:max-w-none print:rounded-none print:border-0 print:p-0 print:shadow-none ${
                 isOver ? 'border-emerald-400 ring-2 ring-emerald-100' : 'border-neutral-200'
             }`}
         >
             {children}
         </article>
+    )
+}
+
+/**
+ * The whole posting, one click from the builder. Tailoring happens against text
+ * the user can no longer see once they leave the listing, and checking a claim
+ * against the job ad is exactly what someone does while editing a resume.
+ */
+function JobDetailsDialog({ job }: { job: ResumeBuilderState }) {
+    const details = job.job
+    const facts = [
+        ['Company', job.company],
+        ['Location', details?.location],
+        ['Salary', details?.salary],
+        ['Type', details?.jobType?.replace(/_/g, ' ')],
+        ['Posted', details?.postedAt],
+        ['Source', details?.via],
+    ].filter(([, value]) => Boolean(value)) as [string, string][]
+
+    if (!job.jobDescription.trim() && facts.length === 0) return null
+
+    return (
+        <Dialog>
+            <DialogTrigger className="inline-flex shrink-0 items-center gap-1 rounded text-[12px] font-medium text-emerald-700 underline-offset-2 hover:underline">
+                <Info className="h-3.5 w-3.5" aria-hidden />
+                View job
+            </DialogTrigger>
+            <DialogContent className="max-w-2xl text-left">
+                <DialogHeader className="mb-4 text-left">
+                    <DialogTitle>{job.jobTitle ?? 'This role'}</DialogTitle>
+                    <DialogDescription>
+                        {job.company ?? 'Company not listed'}
+                    </DialogDescription>
+                </DialogHeader>
+
+                {facts.length > 0 ? (
+                    <dl className="mb-4 grid grid-cols-2 gap-x-4 gap-y-2 text-[13px] sm:grid-cols-3">
+                        {facts.map(([label, value]) => (
+                            <div key={label}>
+                                <dt className="text-neutral-500">{label}</dt>
+                                <dd className="text-neutral-900">{value}</dd>
+                            </div>
+                        ))}
+                    </dl>
+                ) : null}
+
+                {details?.tags?.length ? (
+                    <div className="mb-4 flex flex-wrap gap-1.5">
+                        {details.tags.map((tag) => (
+                            <span
+                                key={tag}
+                                className="rounded-full bg-neutral-100 px-2.5 py-0.5 text-[11px] text-neutral-700"
+                            >
+                                {tag}
+                            </span>
+                        ))}
+                    </div>
+                ) : null}
+
+                {job.jobDescription.trim() ? (
+                    <div className="max-h-[45vh] overflow-y-auto rounded-lg border border-neutral-200 bg-neutral-50/60 p-3">
+                        <p className="whitespace-pre-wrap text-[13px] leading-relaxed text-neutral-700">
+                            {job.jobDescription}
+                        </p>
+                    </div>
+                ) : null}
+
+                {details?.applyLinks?.length || details?.href ? (
+                    <div className="mt-4 flex flex-wrap gap-2">
+                        {(details.applyLinks ?? []).map((link, i) => (
+                            <a
+                                key={`${link.link}-${i}`}
+                                href={link.link}
+                                target="_blank"
+                                rel="noreferrer"
+                                className="inline-flex items-center gap-1 rounded-full border border-neutral-200 px-3 py-1 text-xs text-neutral-800 hover:bg-neutral-50"
+                            >
+                                <ExternalLink className="h-3 w-3" aria-hidden />
+                                {link.title}
+                            </a>
+                        ))}
+                        {details.href ? (
+                            <a
+                                href={details.href}
+                                target="_blank"
+                                rel="noreferrer"
+                                className="inline-flex items-center gap-1 rounded-full border border-neutral-200 px-3 py-1 text-xs text-neutral-800 hover:bg-neutral-50"
+                            >
+                                <ExternalLink className="h-3 w-3" aria-hidden />
+                                Original listing
+                            </a>
+                        ) : null}
+                    </div>
+                ) : null}
+            </DialogContent>
+        </Dialog>
     )
 }
 
@@ -106,6 +235,9 @@ export default function ResumeBuilder() {
     const [error, setError] = useState<string | null>(null)
     const [accent, setAccent] = useState(DEFAULT_ACCENT)
     const [selectedId, setSelectedId] = useState<string | null>(null)
+    /** Entries select independently of their section, so a single role can be
+     *  picked out of an Experience block to reorder or delete. */
+    const [selectedEntryId, setSelectedEntryId] = useState<string | null>(null)
     const [source, setSource] = useState<ResumeSource>(cachedDraft?.source ?? 'cv')
     const [regenerateKey, setRegenerateKey] = useState(0)
     /** The saved CV, so sections can pull in real entries instead of retyping. */
@@ -203,6 +335,14 @@ export default function ResumeBuilder() {
             const { active, over } = event
             if (!over) return
 
+            // Entries cover nearly all of a section's area, so whatever is
+            // dropped onto one usually reports an entry as the target. Anything
+            // working at section level has to climb back up to its owner first.
+            const overSectionId =
+                over.data.current?.type === 'entry'
+                    ? String(over.data.current.sectionId)
+                    : String(over.id)
+
             // A palette block: insert a new section rather than reorder one.
             const blueprint = active.data.current?.blueprint as
                 | BlockBlueprint
@@ -210,21 +350,59 @@ export default function ResumeBuilder() {
             if (active.data.current?.from === 'palette' && blueprint) {
                 addSection(
                     blueprint,
-                    over.id === CANVAS_DROPPABLE_ID ? undefined : String(over.id)
+                    over.id === CANVAS_DROPPABLE_ID ? undefined : overSectionId
                 )
                 return
             }
 
             if (active.id === over.id) return
+
+            // An entry reorders inside its own section. Dropping one onto a
+            // different section is ignored rather than guessed at — moving a job
+            // into Education is far more likely a slip than an intention.
+            if (active.data.current?.type === 'entry') {
+                const sectionId = String(active.data.current.sectionId)
+                setResume((prev) => {
+                    if (!prev) return prev
+                    const index = prev.sections.findIndex((s) => s.id === sectionId)
+                    const section = prev.sections[index]
+                    if (index === -1 || !section) return prev
+                    const from = section.entries.findIndex((e) => e.id === active.id)
+                    const to = section.entries.findIndex((e) => e.id === over.id)
+                    if (from === -1 || to === -1 || from === to) return prev
+                    const sections = [...prev.sections]
+                    sections[index] = {
+                        ...section,
+                        entries: arrayMove(section.entries, from, to),
+                    }
+                    return { ...prev, sections }
+                })
+                return
+            }
+
             setResume((prev) => {
                 if (!prev) return prev
                 const from = prev.sections.findIndex((s) => s.id === active.id)
-                const to = prev.sections.findIndex((s) => s.id === over.id)
-                if (from === -1 || to === -1) return prev
+                const to = prev.sections.findIndex((s) => s.id === overSectionId)
+                if (from === -1 || to === -1 || from === to) return prev
                 return { ...prev, sections: arrayMove(prev.sections, from, to) }
             })
         },
         [addSection]
+    )
+
+    /** null when there is no job to tailor against, which hides the affordance. */
+    const rebuildBullet: RebuildBullet | null = useCallback(
+        async (bullet: string, context: { entryTitle: string; entrySubtitle: string | null }) =>
+            rebuildBulletRequest({
+                bullet,
+                jobTitle: jobContext?.jobTitle ?? null,
+                company: jobContext?.company ?? null,
+                jobDescription: jobContext?.jobDescription ?? '',
+                entryTitle: context.entryTitle,
+                entrySubtitle: context.entrySubtitle,
+            }),
+        [jobContext]
     )
 
     const updateStyle = useCallback(
@@ -285,9 +463,12 @@ export default function ResumeBuilder() {
                             <h1 className="truncate text-base font-semibold text-neutral-900">
                                 Resume for {jobContext.jobTitle ?? 'this role'}
                             </h1>
-                            <p className="truncate text-[13px] text-neutral-600">
-                                {jobContext.company ?? 'Tailored from your saved CV'}
-                            </p>
+                            <div className="flex items-center gap-1.5">
+                                <p className="truncate text-[13px] text-neutral-600">
+                                    {jobContext.company ?? 'Tailored from your saved CV'}
+                                </p>
+                                <JobDetailsDialog job={jobContext} />
+                            </div>
                         </div>
                     </div>
                     <div className="flex items-center gap-2">
@@ -344,15 +525,20 @@ export default function ResumeBuilder() {
 
                             {/* Canvas */}
                             <div className="min-w-0 flex-1 print:w-full">
-                                <p className="mb-3 text-center text-xs text-neutral-500 print:hidden">
-                                    {source === 'ai'
-                                        ? 'Written for this role from your saved CV — every employer and date is checked against it. '
-                                        : 'Built from your CV in your own wording. '}
-                                    Click a section to style it, drag the handle to reorder,
-                                    and check every line before you send it.
-                                </p>
-                                <CanvasSheet onDeselect={() => setSelectedId(null)}>
-                                    <header className="mb-5">
+                                <CanvasSheet
+                                    onDeselect={() => {
+                                        setSelectedId(null)
+                                        setSelectedEntryId(null)
+                                    }}
+                                >
+                                    <TooltipProvider>
+                                      <Tooltip>
+                                        <TooltipTrigger
+                                          // A div, not a button: this is a
+                                          // hover hint over a block of text,
+                                          // and nothing here is clickable.
+                                          render={<header className="mb-2 block cursor-default p-1" />}
+                                        >
                                         <h1 className="text-2xl font-bold text-neutral-900">
                                             {resume.header.fullName}
                                         </h1>
@@ -372,7 +558,14 @@ export default function ResumeBuilder() {
                                                 .filter(Boolean)
                                                 .join('  ·  ')}
                                         </p>
-                                    </header>
+                                        </TooltipTrigger>
+                                        <TooltipContent side="top">
+                                            Your name and contact details come
+                                            from your CV — update them in CV
+                                            details to change them here.
+                                        </TooltipContent>
+                                      </Tooltip>
+                                    </TooltipProvider>
 
                                     <SortableContext
                                         items={resume.sections.map((s) => s.id)}
@@ -385,8 +578,21 @@ export default function ResumeBuilder() {
                                                     section={section}
                                                     accent={accent}
                                                     selected={section.id === selectedId}
+                                                    selectedEntryId={selectedEntryId}
                                                     cv={cv}
-                                                    onSelect={() => setSelectedId(section.id)}
+                                                    rebuildBullet={
+                                                        jobContext.jobDescription
+                                                            ? rebuildBullet
+                                                            : null
+                                                    }
+                                                    onSelectEntry={(entryId) => {
+                                                        setSelectedId(section.id)
+                                                        setSelectedEntryId(entryId)
+                                                    }}
+                                                    onSelect={() => {
+                                                        setSelectedId(section.id)
+                                                        setSelectedEntryId(null)
+                                                    }}
                                                     onChange={(next) =>
                                                         setResume((p) =>
                                                             p

@@ -61,7 +61,7 @@ export default function SectionPalette({
     return (
         // sticky lives on the aside: an inner sticky div is bounded by the
         // aside's own height, which is just its content, so it never moves.
-        <aside className="sticky top-[120px] max-h-[calc(100dvh-140px)] w-56 shrink-0 self-start overflow-y-auto pb-4 md:top-[132px] print:hidden">
+        <aside className="sticky top-30 max-h-[calc(100dvh-140px)] w-56 shrink-0 self-start overflow-y-auto pb-4 md:top-41 print:hidden">
             <div className="space-y-2">
                 <h2 className="px-1 text-[11px] font-semibold uppercase tracking-wider text-neutral-500">
                     Blocks

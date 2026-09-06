@@ -251,6 +251,21 @@
 
     --sidebar-ring: oklch(0.556 0 0);
 }
+/* An empty contentEditable field collapses to nothing, so a fresh entry looked
+   like a lone bullet with no way to see that a title, company and period were
+   waiting to be filled in. Screen-only: a placeholder must never print. */
+.editable:empty::before {
+    content: attr(data-placeholder);
+    color: var(--color-neutral-300);
+    pointer-events: none;
+}
+
+@media print {
+    .editable:empty::before {
+        content: none;
+    }
+}
+
 /* Resume builder: the printed page is the deliverable, so strip the app chrome
    and let the document run full-bleed. Text stays real text — never rasterise a
    resume, ATS parsers cannot read an image. */

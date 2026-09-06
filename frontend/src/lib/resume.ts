@@ -41,7 +41,7 @@ export const DEFAULT_SECTION_STYLE: SectionStyle = {
     fontWeight: 400,
     color: null,
     headingColor: null,
-    spacing: 16,
+    spacing: 10,
 }
 
 export type ResumeSection = {
@@ -281,5 +281,54 @@ export async function tailorResume(
         }
     } catch (err) {
         return { resume: null, source: 'cv', error: tailorErrorMessage(err) }
+    }
+}
+
+
+export type BulletRewriteRequest = {
+    bullet: string
+    jobTitle: string | null
+    company: string | null
+    jobDescription: string
+    entryTitle: string
+    entrySubtitle: string | null
+}
+
+type BulletRewriteApiResponse = {
+    success: boolean
+    data?: { bullet: string }
+    error?: string
+}
+
+/**
+ * Rewrites a single bullet. Kept separate from tailorResume so polishing one
+ * weak line costs one cheap call rather than regenerating the document and
+ * discarding every edit the user has already made.
+ */
+export async function rebuildBullet(
+    request: BulletRewriteRequest,
+    signal?: AbortSignal
+): Promise<{ text: string | null; error: string | null }> {
+    if (!isApiConfigured()) {
+        return { text: null, error: 'Backend URL is not configured (VITE_BACKEND_URL).' }
+    }
+
+    try {
+        const response = await api.post<BulletRewriteApiResponse>(
+            '/resume/bullet',
+            request,
+            { signal, timeout: 60_000 }
+        )
+
+        if (!response.data.success || !response.data.data?.bullet) {
+            return {
+                text: null,
+                error: response.data.error ?? 'Could not rewrite that line',
+            }
+        }
+
+        return { text: response.data.data.bullet, error: null }
+    } catch (err) {
+        return { text: null, error: tailorErrorMessage(err) }
     }
 }
