@@ -15,6 +15,20 @@ export type CvEducation = {
     year: string | null
 }
 
+export type CvProject = {
+    name: string
+    description: string | null
+    startDate: string | null
+    endDate: string | null
+    link: string | null
+}
+
+export type CvCertification = {
+    name: string
+    issuer: string | null
+    year: string | null
+}
+
 export type CvExtracted = {
     fullName: string | null
     email: string | null
@@ -24,7 +38,9 @@ export type CvExtracted = {
     summary: string | null
     skills: string[]
     experience: CvExperience[]
+    projects: CvProject[]
     education: CvEducation[]
+    certifications: CvCertification[]
     languages: string[]
     links: {
         linkedin: string | null
@@ -103,7 +119,12 @@ export function parseExtractedInformation(
                 summary: extracted.summary ?? null,
                 skills: extracted.skills ?? [],
                 experience: extracted.experience ?? [],
+                // Dropping these on parse silently deleted them on the next
+                // save from the details form, which round-trips whatever it
+                // parsed back to the server.
+                projects: extracted.projects ?? [],
                 education: extracted.education ?? [],
+                certifications: extracted.certifications ?? [],
                 languages: extracted.languages ?? [],
                 links: {
                     linkedin: extracted.links?.linkedin ?? null,

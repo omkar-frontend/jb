@@ -1,6 +1,8 @@
 import { useCallback, useEffect, useState } from 'react'
-import { AlertCircle, Loader, RefreshCcw } from 'lucide-react'
+import { useNavigate } from 'react-router-dom'
+import { AlertCircle, FileText, Loader, RefreshCcw } from 'lucide-react'
 import AuthDialog from './AuthDialog'
+import CompanyLogo from './CompanyLogo'
 import { useAuth } from '../context/AuthContext'
 import {
     getCvProfile,
@@ -13,61 +15,80 @@ import {
     type RelevantJob,
 } from '../lib/relevantJobs'
 
-function JobCard({ job }: { job: RelevantJob }) {
-    const cardClassName =
-        'block rounded-lg border border-neutral-200 bg-neutral-50/80 p-4 text-left transition-all duration-200 hover:border-emerald-400 hover:bg-white focus:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500/30 focus-visible:ring-offset-2 cursor-default'
+function JobCard({
+    job,
+    onBuildResume,
+}: {
+    job: RelevantJob
+    onBuildResume: (job: RelevantJob) => void
+}) {
+    const listingUrl = job.url && job.url !== '#' ? job.url : null
 
-    const inner = (
-        <div className="flex flex-col gap-3 sm:flex-row sm:items-start">
-            {job.logo ? (
-                <img
-                    src={job.logo}
-                    alt=""
-                    className="h-10 w-10 shrink-0 rounded-md border border-neutral-200 object-contain"
-                />
-            ) : (
-                <div
-                    className="flex h-10 w-10 shrink-0 items-center justify-center rounded-md border border-neutral-200 bg-neutral-200 text-sm font-semibold text-neutral-700"
-                    aria-hidden
-                >
-                    {(job.company.trim()[0] ?? '?').toUpperCase()}
-                </div>
-            )}
-            <div className="min-w-0 flex-1">
-                <div className="flex flex-wrap items-start justify-between gap-2">
-                    <p className="font-semibold text-neutral-900 text-base">{job.title}</p>
-                    <span className="shrink-0 rounded-full bg-neutral-100 px-2 py-0.5 text-xs font-medium text-neutral-600">
-                        {job.sourceLabel}
-                    </span>
-                </div>
-                <p className="mt-1 text-sm text-neutral-600">
-                    {job.company}
-                    {job.location ? ` · ${job.location}` : ''}
-                    {job.meta ? ` · ${job.meta}` : ''}
-                </p>
-                {job.summary ? (
-                    <p className="mt-2 line-clamp-2 text-sm leading-relaxed text-neutral-700">
-                        {job.summary}
-                    </p>
-                ) : null}
-            </div>
-        </div>
-    )
-
-    if (job.url && job.url !== '#') {
-        return (
-            <a
-                href={job.url}
-                target="_blank"
-                rel="noreferrer"
-                className={cardClassName}
-            >
-                {inner}
-            </a>
-        )
+    const openListing = () => {
+        if (!listingUrl) return
+        window.open(listingUrl, '_blank', 'noopener,noreferrer')
     }
 
-    return <div className={cardClassName}>{inner}</div>
+    return (
+        <div
+            className={`block rounded-2xl border border-neutral-200 bg-neutral-50/80 p-4 text-left transition-all duration-200 hover:border-emerald-400 hover:bg-white focus:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500/30 focus-visible:ring-offset-2 ${listingUrl ? 'cursor-default' : 'cursor-default'}`}
+            onClick={listingUrl ? openListing : undefined}
+            onKeyDown={
+                listingUrl
+                    ? (event) => {
+                          if (event.target !== event.currentTarget) return
+                          if (event.key === 'Enter' || event.key === ' ') {
+                              event.preventDefault()
+                              openListing()
+                          }
+                      }
+                    : undefined
+            }
+            role={listingUrl ? 'link' : undefined}
+            tabIndex={listingUrl ? 0 : undefined}
+        >
+            <div className="flex flex-col gap-3 sm:flex-row sm:items-start">
+                <CompanyLogo
+                    logoUrl={job.logo}
+                    companyName={job.company}
+                    className="h-10 w-10"
+                />
+                <div className="min-w-0 flex-1">
+                    <div className="flex flex-wrap items-start justify-between gap-2">
+                        <p className="font-semibold text-neutral-900 text-base">{job.title}</p>
+                        <span className="shrink-0 rounded-full bg-neutral-100 px-2 py-0.5 text-xs font-medium text-neutral-600">
+                            {job.sourceLabel}
+                        </span>
+                    </div>
+                    <p className="mt-1 text-sm text-neutral-600">
+                        {job.company}
+                        {job.location ? ` · ${job.location}` : ''}
+                        {job.meta ? ` · ${job.meta}` : ''}
+                    </p>
+                    {job.summary ? (
+                        <p className="mt-2 line-clamp-2 text-sm leading-relaxed text-neutral-700">
+                            {job.summary}
+                        </p>
+                    ) : null}
+                </div>
+            </div>
+            {job.description ? (
+                <div className="mt-3 flex flex-wrap gap-2">
+                    <button
+                        type="button"
+                        onClick={(event) => {
+                            event.stopPropagation()
+                            onBuildResume(job)
+                        }}
+                        className="cmn-button-secondary"
+                    >
+                        <FileText className="h-3.5 w-3.5" aria-hidden />
+                        Build resume with this
+                    </button>
+                </div>
+            ) : null}
+        </div>
+    )
 }
 
 type RelevantJobsProps = {
@@ -76,6 +97,7 @@ type RelevantJobsProps = {
 }
 
 export default function RelevantJobs({ refreshKey = 0 }: RelevantJobsProps) {
+    const navigate = useNavigate()
     const { user, loading: authLoading } = useAuth()
     // Effects key on the id so a token refresh does not refetch everything.
     const userId = user?.id ?? null
@@ -88,6 +110,19 @@ export default function RelevantJobs({ refreshKey = 0 }: RelevantJobsProps) {
     const [failedSources, setFailedSources] = useState<string[]>([])
     const [jobsRefreshKey, setJobsRefreshKey] = useState(0)
     const [authDialogOpen, setAuthDialogOpen] = useState(false)
+
+    const handleBuildResume = useCallback(
+        (job: RelevantJob) => {
+            navigate('/resume/build', {
+                state: {
+                    jobTitle: job.title,
+                    company: job.company,
+                    jobDescription: job.description ?? '',
+                },
+            })
+        },
+        [navigate]
+    )
 
     const fetchProfile = useCallback(async () => {
         try {
@@ -304,7 +339,11 @@ export default function RelevantJobs({ refreshKey = 0 }: RelevantJobsProps) {
             ) : (
                 <div className="flex flex-col gap-3">
                     {visibleJobs.map((job) => (
-                        <JobCard key={job.id} job={job} />
+                        <JobCard
+                            key={job.id}
+                            job={job}
+                            onBuildResume={handleBuildResume}
+                        />
                     ))}
                 </div>
             )}

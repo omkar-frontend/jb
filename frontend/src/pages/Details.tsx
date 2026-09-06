@@ -27,8 +27,10 @@ import {
     parseExtractedInformation,
     saveCvExtractToProfile,
     updateCvProfile,
+    type CvCertification,
     type CvEducation,
     type CvExperience,
+    type CvProject,
     type CvExtractApiPayload,
     type CvExtracted,
 } from '../lib/cvProfile'
@@ -49,6 +51,14 @@ function emptyEducation(): CvEducation {
     return { degree: null, institution: null, year: null }
 }
 
+function emptyProject(): CvProject {
+    return { name: '', description: null, startDate: null, endDate: null, link: null }
+}
+
+function emptyCertification(): CvCertification {
+    return { name: '', issuer: null, year: null }
+}
+
 function emptyExtracted(): CvExtracted {
     return {
         fullName: null,
@@ -59,7 +69,9 @@ function emptyExtracted(): CvExtracted {
         summary: null,
         skills: [],
         experience: [],
+        projects: [],
         education: [],
+        certifications: [],
         languages: [],
         links: {
             linkedin: null,
@@ -652,6 +664,132 @@ export default function Details() {
                             </div>
                         </Section>
 
+                        <Section
+                            title="Projects"
+                            description="Personal or client work worth showing alongside your roles"
+                        >
+                            <div className="space-y-6">
+                                {form.projects.map((project, index) => (
+                                    <div
+                                        key={index}
+                                        className="rounded-lg border border-neutral-200 bg-neutral-50/50 p-4"
+                                    >
+                                        <div className="mb-3 flex items-center justify-between">
+                                            <span className="text-sm font-medium text-neutral-600">
+                                                Project {index + 1}
+                                            </span>
+                                            <button
+                                                type="button"
+                                                onClick={() =>
+                                                    updateForm({
+                                                        projects: form.projects.filter(
+                                                            (_, i) => i !== index
+                                                        ),
+                                                    })
+                                                }
+                                                className="inline-flex items-center gap-1 text-sm text-red-600 hover:text-red-700"
+                                            >
+                                                <Trash2 className="h-3.5 w-3.5" aria-hidden />
+                                                Remove
+                                            </button>
+                                        </div>
+                                        <div className="grid gap-3 sm:grid-cols-2">
+                                            <Field label="Name">
+                                                <input
+                                                    className={inputClass}
+                                                    value={project.name}
+                                                    placeholder="e.g. Jobs Board"
+                                                    onChange={(e) => {
+                                                        const next = [...form.projects]
+                                                        next[index] = {
+                                                            ...project,
+                                                            name: e.target.value,
+                                                        }
+                                                        updateForm({ projects: next })
+                                                    }}
+                                                />
+                                            </Field>
+                                            <Field label="Link">
+                                                <input
+                                                    className={inputClass}
+                                                    value={project.link ?? ''}
+                                                    placeholder="e.g. https://github.com/you/repo"
+                                                    onChange={(e) => {
+                                                        const next = [...form.projects]
+                                                        next[index] = {
+                                                            ...project,
+                                                            link: e.target.value || null,
+                                                        }
+                                                        updateForm({ projects: next })
+                                                    }}
+                                                />
+                                            </Field>
+                                            <Field label="Start">
+                                                <input
+                                                    className={inputClass}
+                                                    value={project.startDate ?? ''}
+                                                    placeholder="e.g. Jan 2024"
+                                                    onChange={(e) => {
+                                                        const next = [...form.projects]
+                                                        next[index] = {
+                                                            ...project,
+                                                            startDate: e.target.value || null,
+                                                        }
+                                                        updateForm({ projects: next })
+                                                    }}
+                                                />
+                                            </Field>
+                                            <Field label="End">
+                                                <input
+                                                    className={inputClass}
+                                                    value={project.endDate ?? ''}
+                                                    placeholder="e.g. Present"
+                                                    onChange={(e) => {
+                                                        const next = [...form.projects]
+                                                        next[index] = {
+                                                            ...project,
+                                                            endDate: e.target.value || null,
+                                                        }
+                                                        updateForm({ projects: next })
+                                                    }}
+                                                />
+                                            </Field>
+                                        </div>
+                                        <div className="mt-3">
+                                            <Field label="Description — one bullet per line">
+                                                <textarea
+                                                    className={`${inputClass} resize-none`}
+                                                    rows={4}
+                                                    value={project.description ?? ''}
+                                                    placeholder="Built a full-stack job aggregation platform…"
+                                                    onChange={(e) => {
+                                                        const next = [...form.projects]
+                                                        next[index] = {
+                                                            ...project,
+                                                            description: e.target.value || null,
+                                                        }
+                                                        updateForm({ projects: next })
+                                                    }}
+                                                />
+                                            </Field>
+                                        </div>
+                                    </div>
+                                ))}
+                                <button
+                                    type="button"
+                                    onClick={() =>
+                                        updateForm({
+                                            projects: [...form.projects, emptyProject()],
+                                        })
+                                    }
+                                    className="inline-flex items-center gap-2 rounded-lg border border-dashed border-neutral-300 px-4 py-2 text-sm font-medium text-neutral-700 hover:border-emerald-400 hover:bg-emerald-50/50"
+                                >
+                                    <Plus className="h-4 w-4" aria-hidden />
+                                    Add project
+                                </button>
+                            </div>
+                        </Section>
+
                         <Section title="Education">
                             <div className="space-y-6">
                                 {form.education.map((edu, index) => (
@@ -766,6 +904,104 @@ export default function Details() {
                                 >
                                     <Plus className="h-4 w-4" aria-hidden />
                                     Add education
+                                </button>
+                            </div>
+                        </Section>
+
+
+                        <Section
+                            title="Certifications"
+                            description="Courses and credentials worth listing"
+                        >
+                            <div className="space-y-6">
+                                {form.certifications.map((cert, index) => (
+                                    <div
+                                        key={index}
+                                        className="rounded-lg border border-neutral-200 bg-neutral-50/50 p-4"
+                                    >
+                                        <div className="mb-3 flex items-center justify-between">
+                                            <span className="text-sm font-medium text-neutral-600">
+                                                Certification {index + 1}
+                                            </span>
+                                            <button
+                                                type="button"
+                                                onClick={() =>
+                                                    updateForm({
+                                                        certifications:
+                                                            form.certifications.filter(
+                                                                (_, i) => i !== index
+                                                            ),
+                                                    })
+                                                }
+                                                className="inline-flex items-center gap-1 text-sm text-red-600 hover:text-red-700"
+                                            >
+                                                <Trash2 className="h-3.5 w-3.5" aria-hidden />
+                                                Remove
+                                            </button>
+                                        </div>
+                                        <div className="grid gap-3 sm:grid-cols-3">
+                                            <Field label="Name">
+                                                <input
+                                                    className={inputClass}
+                                                    value={cert.name}
+                                                    placeholder="e.g. Core and Advanced Java"
+                                                    onChange={(e) => {
+                                                        const next = [...form.certifications]
+                                                        next[index] = {
+                                                            ...cert,
+                                                            name: e.target.value,
+                                                        }
+                                                        updateForm({ certifications: next })
+                                                    }}
+                                                />
+                                            </Field>
+                                            <Field label="Issuer">
+                                                <input
+                                                    className={inputClass}
+                                                    value={cert.issuer ?? ''}
+                                                    placeholder="e.g. Oracle"
+                                                    onChange={(e) => {
+                                                        const next = [...form.certifications]
+                                                        next[index] = {
+                                                            ...cert,
+                                                            issuer: e.target.value || null,
+                                                        }
+                                                        updateForm({ certifications: next })
+                                                    }}
+                                                />
+                                            </Field>
+                                            <Field label="Year">
+                                                <input
+                                                    className={inputClass}
+                                                    value={cert.year ?? ''}
+                                                    placeholder="e.g. 2023"
+                                                    onChange={(e) => {
+                                                        const next = [...form.certifications]
+                                                        next[index] = {
+                                                            ...cert,
+                                                            year: e.target.value || null,
+                                                        }
+                                                        updateForm({ certifications: next })
+                                                    }}
+                                                />
+                                            </Field>
+                                        </div>
+                                    </div>
+                                ))}
+                                <button
+                                    type="button"
+                                    onClick={() =>
+                                        updateForm({
+                                            certifications: [
+                                                ...form.certifications,
+                                                emptyCertification(),
+                                            ],
+                                        })
+                                    }
+                                    className="inline-flex items-center gap-2 rounded-lg border border-dashed border-neutral-300 px-4 py-2 text-sm font-medium text-neutral-700 hover:border-emerald-400 hover:bg-emerald-50/50"
+                                >
+                                    <Plus className="h-4 w-4" aria-hidden />
+                                    Add certification
                                 </button>
                             </div>
                         </Section>

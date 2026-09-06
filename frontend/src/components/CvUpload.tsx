@@ -384,10 +384,13 @@ export default function CvUpload({ onCvUpdated }: CvUploadProps) {
             {error ? (
                 <div
                     role="alert"
-                    className="mt-4 flex items-center gap-2 rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-[13px] text-red-800"
+                    className="mt-4 flex items-start gap-2 rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-[13px] text-red-800"
                 >
-                    <AlertCircle className="h-4 w-4 shrink-0" aria-hidden />
-                    <span>Failed to extract your CV. Please try again.</span>
+                    <AlertCircle className="mt-0.5 h-4 w-4 shrink-0" aria-hidden />
+                    {/* The actual reason, not a fixed line: this banner also
+                        reports the size and file-type checks that run on
+                        selection, long before there is an extraction to fail. */}
+                    <span>{error}</span>
                 </div>
             ) : null}
 
@@ -544,6 +547,41 @@ function CvExtractedPreview({
                 </div>
             ) : null}
 
+            {data.projects?.length ? (
+                <div className="rounded-xl border border-neutral-200 bg-white p-4">
+                    <h3 className="mb-3 text-sm font-medium text-neutral-500">
+                        Projects
+                    </h3>
+                    <ul className="space-y-4">
+                        {data.projects.map((project, i) => (
+                            <li
+                                key={`${project.name}-${i}`}
+                                className="border-b border-neutral-100 pb-4 last:border-0 last:pb-0"
+                            >
+                                <p className="font-medium text-neutral-900">{project.name}</p>
+                                {project.startDate || project.endDate ? (
+                                    <p className="text-xs text-neutral-500">
+                                        {[project.startDate, project.endDate]
+                                            .filter(Boolean)
+                                            .join(" — ")}
+                                    </p>
+                                ) : null}
+                                {project.link ? (
+                                    <p className="truncate text-xs text-emerald-700">
+                                        {project.link}
+                                    </p>
+                                ) : null}
+                                {project.description ? (
+                                    <p className="mt-1 text-sm text-neutral-600">
+                                        {project.description}
+                                    </p>
+                                ) : null}
+                            </li>
+                        ))}
+                    </ul>
+                </div>
+            ) : null}
+
             {data.education?.length ? (
                 <div className="rounded-xl border border-neutral-200 bg-white p-4">
                     <h3 className="mb-3 text-sm font-medium text-neutral-500">
@@ -557,6 +595,26 @@ function CvExtractedPreview({
                                 </span>
                                 {edu.year ? (
                                     <span className="text-neutral-500"> ({edu.year})</span>
+                                ) : null}
+                            </li>
+                        ))}
+                    </ul>
+                </div>
+            ) : null}
+
+            {data.certifications?.length ? (
+                <div className="rounded-xl border border-neutral-200 bg-white p-4">
+                    <h3 className="mb-3 text-sm font-medium text-neutral-500">
+                        Certifications
+                    </h3>
+                    <ul className="space-y-2 text-sm">
+                        {data.certifications.map((cert, i) => (
+                            <li key={`${cert.name}-${i}`}>
+                                <span className="font-medium text-neutral-900">
+                                    {[cert.name, cert.issuer].filter(Boolean).join(" · ")}
+                                </span>
+                                {cert.year ? (
+                                    <span className="text-neutral-500"> ({cert.year})</span>
                                 ) : null}
                             </li>
                         ))}
