@@ -18,6 +18,9 @@ export type RelevantJob = {
     sourceLabel: string
     url: string
     summary: string | null
+    /** Full, untruncated JD — `summary` is capped at 220 chars for display, which
+     *  is far too little to tailor a resume against. */
+    description: string | null
     logo: string | null
     meta: string | null
 }
@@ -113,6 +116,7 @@ async function fetchAdzunaJobs(
             sourceLabel: 'Adzuna',
             url: job.redirect_url?.trim() || '#',
             summary: job.description ? truncate(stripHtml(job.description)) : null,
+            description: job.description ? stripHtml(job.description) : null,
             logo: null,
             meta: job.contract_time?.trim() || null,
         })
@@ -167,6 +171,7 @@ async function fetchSerpJobs(
                 sourceLabel: 'Google',
                 url: googleApplyUrl(job) || '#',
                 summary: job.description ? truncate(job.description) : null,
+                description: job.description?.trim() || null,
                 logo: job.thumbnail?.trim() || null,
                 meta: metaParts.length > 0 ? metaParts.join(' · ') : null,
             }
@@ -214,6 +219,7 @@ async function fetchRemotiveJobs(
             sourceLabel: 'Remotive',
             url: job.url?.trim() || '#',
             summary: job.description ? truncate(stripHtml(job.description)) : null,
+            description: job.description ? stripHtml(job.description) : null,
             logo:
                 job.company_logo?.trim() ||
                 job.company_logo_url?.trim() ||
@@ -271,6 +277,7 @@ async function fetchHimalayasJobs(
                 sourceLabel: 'Himalayas',
                 url: job.applicationLink?.trim() || job.guid?.trim() || '#',
                 summary: summary ? truncate(summary) : null,
+                description: job.description ? stripHtml(job.description) : summary || null,
                 logo: job.companyLogo?.trim() || null,
                 meta: job.employmentType?.trim() || null,
             }
@@ -341,6 +348,9 @@ async function fetchJSearchJobs(
                     '#',
                 summary: job.job_description
                     ? truncate(stripHtml(job.job_description))
+                    : null,
+                description: job.job_description
+                    ? stripHtml(job.job_description)
                     : null,
                 logo: job.employer_logo?.trim() || null,
                 meta: metaParts.length > 0 ? metaParts.join(' · ') : null,

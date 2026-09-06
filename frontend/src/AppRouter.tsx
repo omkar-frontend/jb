@@ -18,6 +18,7 @@ const Signup = lazy(() => import('./pages/Signup'))
 const Profile = lazy(() => import('./pages/Profile'))
 const Details = lazy(() => import('./pages/Details'))
 const Portal = lazy(() => import('./pages/portal/Portal'))
+const ResumeBuilder = lazy(() => import('./pages/ResumeBuilder'))
 
 function RouteFallback() {
     return (
@@ -41,6 +42,7 @@ const router = createBrowserRouter(
                 <Route path="/profile" element={lazyRoute(<Profile />)} />
                 <Route path="/details" element={lazyRoute(<Details />)} />
                 <Route path="/portal/:portal" element={lazyRoute(<Portal />)} />
+                <Route path="/resume/build" element={lazyRoute(<ResumeBuilder />)} />
                 <Route path="*" element={<NotFound />} />
             </Route>
         </>

@@ -1,4 +1,8 @@
 import { useState } from "react";
+import { useNavigate } from "react-router-dom";
+import { FileText } from "lucide-react";
+import { useAuth } from "../context/AuthContext";
+import type { ResumeBuilderState } from "../pages/ResumeBuilder";
 
 const DESCRIPTION_MAX = 260;
 
@@ -89,8 +93,30 @@ export default function PortalJobCard({
     const hasApplyLinks = applyLinks.length > 0;
     const cardHref = href?.trim() && href !== "#" ? href.trim() : null;
 
-    const cardClassName =
-        "block rounded-lg border border-neutral-200 bg-neutral-50/80 p-4 text-left transition-all duration-200 hover:border-emerald-400 hover:bg-white focus:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500/30 focus-visible:ring-offset-2 cursor-default";
+    const navigate = useNavigate();
+    const { user } = useAuth();
+    // Needs a real job description to tailor against; a title alone is not enough.
+    const canBuildResume = Boolean(description?.trim());
+
+    const buildResume = () => {
+        if (!user) {
+            navigate("/login", { state: { from: "/" } });
+            return;
+        }
+        const state: ResumeBuilderState = {
+            jobTitle: title?.trim() || null,
+            company: company?.trim() || null,
+            jobDescription: description?.trim() ?? "",
+        };
+        navigate("/resume/build", { state });
+    };
+
+    const openListing = () => {
+        if (!cardHref) return;
+        window.open(cardHref, "_blank", "noopener,noreferrer");
+    };
+
+    const cardClassName = `block rounded-2xl border border-neutral-200 bg-neutral-50/80 p-4 text-left transition-all duration-200 hover:border-emerald-400 hover:bg-white focus:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500/30 focus-visible:ring-offset-2 ${cardHref ? "cursor-default" : "cursor-default"}`;
 
     const metaItems = [
         jobType?.trim() ? `Type: ${jobType.trim().replace(/_/g, " ")}` : null,
@@ -152,6 +178,22 @@ export default function PortalJobCard({
                     </div>
                 ) : null}
 
+                {canBuildResume ? (
+                    <div className="mt-3">
+                        <button
+                            type="button"
+                            onClick={(event) => {
+                                event.stopPropagation();
+                                buildResume();
+                            }}
+                            className="cmn-button-secondary"
+                        >
+                            <FileText className="h-3.5 w-3.5" aria-hidden />
+                            Build resume with this
+                        </button>
+                    </div>
+                ) : null}
+
                 {hasApplyLinks ? (
                     <div className="mt-3 flex flex-wrap gap-2">
                         {applyLinks.map((opt, i) => (
@@ -172,19 +214,25 @@ export default function PortalJobCard({
         </div>
     );
 
-    // Avoid nested anchors when apply link pills are present
-    if (cardHref && !hasApplyLinks) {
-        return (
-            <a
-                href={cardHref}
-                target="_blank"
-                rel="noreferrer"
-                className={cardClassName}
-            >
-                {inner}
-            </a>
-        );
-    }
-
-    return <div className={cardClassName}>{inner}</div>;
+    return (
+        <div
+            className={cardClassName}
+            onClick={cardHref ? openListing : undefined}
+            onKeyDown={
+                cardHref
+                    ? (event) => {
+                          if (event.target !== event.currentTarget) return;
+                          if (event.key === "Enter" || event.key === " ") {
+                              event.preventDefault();
+                              openListing();
+                          }
+                      }
+                    : undefined
+            }
+            role={cardHref ? "link" : undefined}
+            tabIndex={cardHref ? 0 : undefined}
+        >
+            {inner}
+        </div>
+    );
 }

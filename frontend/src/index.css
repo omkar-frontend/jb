@@ -251,3 +251,21 @@
 
     --sidebar-ring: oklch(0.556 0 0);
 }
+/* Resume builder: the printed page is the deliverable, so strip the app chrome
+   and let the document run full-bleed. Text stays real text — never rasterise a
+   resume, ATS parsers cannot read an image. */
+@media print {
+    header,
+    footer {
+        display: none !important;
+    }
+
+    body {
+        background: #fff;
+    }
+
+    @page {
+        size: A4;
+        margin: 14mm;
+    }
+}

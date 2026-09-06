@@ -7,7 +7,7 @@ const { createClient } = require("@supabase/supabase-js");
 const { GoogleGenerativeAI } = require("@google/generative-ai");
 const { getJson } = require("serpapi");
 const helmet = require("helmet");
-const rateLimit = require("express-rate-limit");
+const { rateLimit, ipKeyGenerator } = require("express-rate-limit");
 
 dotenv.config();
 
@@ -226,6 +226,29 @@ const cvExtractLimiter = anonymousRateLimit({
   limit: 5,
   error:
     "CV extraction limit reached. Sign in for unlimited extractions, or try again in an hour.",
+});
+
+/**
+ * Resume tailoring is the most expensive call here: a job description plus the
+ * whole CV profile, billed by token. Deliberately NOT built on
+ * anonymousRateLimit — that skips signed-in users, and this route requires auth,
+ * so the limit would never apply to anyone. Keyed per account instead.
+ */
+const resumeTailorLimiter = rateLimit({
+  windowMs: HOUR,
+  limit: 10,
+  standardHeaders: "draft-8",
+  legacyHeaders: false,
+  keyGenerator: (req, res) => req.authUser?.id ?? ipKeyGenerator(req, res),
+  // Only successful builds count. Otherwise a user with no saved CV burns the
+  // whole hourly quota on 409s that never reach Gemini and cost nothing.
+  skipFailedRequests: true,
+  handler: (req, res) => {
+    res.status(429).json({
+      success: false,
+      error: "Too many resume builds. Please try again in a little while.",
+    });
+  },
 });
 
 /** SerpAPI and JSearch bill per search. */
@@ -664,6 +687,650 @@ app.put("/cv/profile", requireAuth, asyncHandler(async (req, res) => {
 
   return res.json({ success: true, data: formatProfileRow(data) });
 }));
+
+/**
+ * Selection and ordering happen here, deterministically. Only the wording of
+ * the bullets that survive is sent to Gemini. That keeps the model out of the
+ * decisions that matter — what to include and in what order — so it cannot
+ * quietly drop a job or reshuffle a career history, and the prompt shrinks from
+ * "entire CV + entire job description" to "a list of sentences".
+ */
+const STOPWORDS = new Set([
+  "a","an","and","are","as","at","be","been","but","by","can","for","from","had",
+  "has","have","how","in","into","is","it","its","of","on","or","our","that",
+  "the","their","them","they","this","to","was","we","were","what","when","which",
+  "who","will","with","you","your","able","across","also","any","etc","including",
+  "role","team","work","working","experience","years","year","job","candidate",
+  "ideal","looking","required","requirements","responsibilities","plus","strong",
+  "good","great","excellent","ability","skills","using","use","new","help","join",
+  "us","well","more","most","other","within","while","would","should","must",
+]);
+
+function tokenize(text) {
+  return String(text ?? "")
+    .toLowerCase()
+    .replace(/[^a-z0-9+#.\s-]/g, " ")
+    .split(/\s+/)
+    .map((token) => token.replace(/^[-.]+|[-.]+$/g, ""))
+    .filter((token) => token.length > 1 && !STOPWORDS.has(token));
+}
+
+/**
+ * Corporate vocabulary that appears in every posting, so it distinguishes none.
+ * Deliberately excludes words that name real technical ground — "architecture",
+ * "distributed", "scalable", "backend", "microservices" all survive.
+ */
+const BOILERPLATE = new Set([
+  "e.g","i.e","etc","development","engineering","engineer","software","technology",
+  "technologies","solutions","solution","practices","practice","teams","business",
+  "businesses","company","companies","organization","organisation","customer",
+  "customers","client","clients","product","products","services","service",
+  "people","world","global","industry","mission","culture","vision","values",
+  "opportunity","opportunities","information","policies","policy","compliance",
+  "responsibility","responsibilities","activities","access","risk","inherent",
+  "periodic","mandatory","trainings","training","guidelines","accordance",
+  "behalf","expected","person","drive","driving","driven","lead","leading",
+  "ensure","ensuring","ensuringly","support","supporting","deep","modern","best",
+  "quality","complex","own","owning","ownership","proven","hands","demonstrated",
+  "understanding","exposure","expertise","related","standards","processes",
+  "process","delivery","deliver","technical","build","building","builds",
+  "maintain","maintaining","provide","providing","identify","champion","foster",
+  "fostering","across","including","various","diverse","passionate","motivated",
+  "curious","analytical","mindset","potential","possibilities","everyone",
+  "everywhere","inclusive","sustainable","innovation","innovations","innovating",
+]);
+
+/**
+ * The bullet lines of a posting — the responsibilities and requirements — are
+ * where the role actually lives. The mission statement and the security
+ * appendix around them are prose, and prose is where the boilerplate hides.
+ */
+function requirementLines(text) {
+  return String(text ?? "")
+    .split(/\r?\n/)
+    .filter((line) => /^\s*(?:[-•*·]|\d+[.)])\s+/.test(line))
+    .join("\n");
+}
+
+/** Everything a posting puts in brackets, joined into one string. */
+function parentheticals(text) {
+  return (String(text ?? "").match(/\(([^)]{1,120})\)/g) ?? []).join(" ");
+}
+
+/**
+ * Raw frequency ranks a posting's noise first: on a Mastercard ad, "development"
+ * (15 mentions), "mastercard" (8) and "information" (4) all outranked Java,
+ * Spring and Kafka, which are named once or twice each and are the entire point
+ * of the role. Three corrections, in ascending order of how much they matter:
+ * the hiring company's own name is dropped, requirement lines count double, and
+ * repetition is scored sublinearly so nothing wins by being boilerplate.
+ * Title terms still dominate — the title names the role by definition.
+ */
+function keywordWeights(jobDescription, jobTitle, company) {
+  const companyTokens = new Set(tokenize(company));
+  const counts = new Map();
+
+  const bump = (token, amount) => {
+    if (BOILERPLATE.has(token) || companyTokens.has(token)) return;
+    counts.set(token, (counts.get(token) ?? 0) + amount);
+  };
+
+  for (const token of tokenize(jobDescription)) bump(token, 1);
+  for (const token of tokenize(requirementLines(jobDescription))) bump(token, 2);
+  // Concrete technologies are named once and parenthetically — "(e.g., Kafka,
+  // MQ)", "(AWS)", "(Scrum/SAFe)". Frequency alone buries them under prose that
+  // says nothing, so the brackets themselves are treated as the signal.
+  for (const token of tokenize(parentheticals(jobDescription))) bump(token, 4);
+
+  const weights = new Map();
+  for (const [token, count] of counts) {
+    weights.set(token, 1 + Math.log2(count));
+  }
+
+  for (const token of tokenize(jobTitle)) {
+    weights.set(token, (weights.get(token) ?? 0) + 5);
+  }
+
+  return weights;
+}
+
+/** Each distinct term counts once, so a bullet cannot win by repeating a word. */
+function relevanceScore(text, weights) {
+  const seen = new Set();
+  let score = 0;
+  for (const token of tokenize(text)) {
+    if (seen.has(token)) continue;
+    seen.add(token);
+    score += weights.get(token) ?? 0;
+  }
+  return score;
+}
+
+function topKeywords(weights, count) {
+  return [...weights.entries()]
+    .sort((a, b) => b[1] - a[1])
+    .slice(0, count)
+    .map(([term]) => term);
+}
+
+/** Rows store the whole extract payload; older ones may store just the CV. */
+function unwrapCv(extractedInformation) {
+  const root = extractedInformation;
+  if (!root || typeof root !== "object") return null;
+  if (root.data && typeof root.data === "object" && root.data.extracted) {
+    return root.data.extracted;
+  }
+  if (root.extracted && typeof root.extracted === "object") return root.extracted;
+  return root;
+}
+
+function splitBullets(description) {
+  if (!description || typeof description !== "string") return [];
+  return description
+    .split(/\r?\n/)
+    .map((line) => line.replace(/^\s*[-•*]\s*/, "").trim())
+    .filter((line) => line.length > 0);
+}
+
+const MAX_BULLETS_PER_ROLE = 4;
+const MAX_SKILLS = 14;
+
+/**
+ * Employment history is never dropped: a missing job reads as an unexplained
+ * gap, which hurts more than an off-topic line. Relevance decides which
+ * *bullets* survive inside each role, and which skills make the list.
+ */
+function buildResume(cv, weights) {
+  const sections = [];
+
+  if (typeof cv.summary === "string" && cv.summary.trim()) {
+    sections.push({
+      id: "summary",
+      heading: "Summary",
+      kind: "text",
+      text: cv.summary.trim(),
+      entries: [],
+      tags: [],
+    });
+  }
+
+  const experience = Array.isArray(cv.experience) ? cv.experience : [];
+  if (experience.length > 0) {
+    sections.push({
+      id: "experience",
+      heading: "Experience",
+      kind: "entries",
+      text: null,
+      tags: [],
+      entries: experience.map((job, index) => {
+        // Keep the highest-scoring bullets, then restore the original order so
+        // the role still reads as a narrative.
+        const bullets = splitBullets(job?.description)
+          .map((text, position) => ({
+            text,
+            position,
+            score: relevanceScore(text, weights),
+          }))
+          .sort((a, b) => b.score - a.score)
+          .slice(0, MAX_BULLETS_PER_ROLE)
+          .sort((a, b) => a.position - b.position)
+          .map((item) => item.text);
+
+        return {
+          id: `experience-entry-${index + 1}`,
+          title: typeof job?.title === "string" ? job.title : "",
+          subtitle: typeof job?.company === "string" ? job.company : null,
+          period:
+            [job?.startDate, job?.endDate].filter(Boolean).join(" — ") || null,
+          bullets,
+        };
+      }),
+    });
+  }
+
+  const skills = (Array.isArray(cv.skills) ? cv.skills : []).filter(
+    (skill) => typeof skill === "string" && skill.trim()
+  );
+  if (skills.length > 0) {
+    sections.push({
+      id: "skills",
+      heading: "Skills",
+      kind: "tags",
+      text: null,
+      entries: [],
+      tags: skills
+        .map((skill) => ({
+          skill: skill.trim(),
+          score: relevanceScore(skill, weights),
+        }))
+        .sort((a, b) => b.score - a.score)
+        .slice(0, MAX_SKILLS)
+        .map((item) => item.skill),
+    });
+  }
+
+  const education = Array.isArray(cv.education) ? cv.education : [];
+  if (education.length > 0) {
+    sections.push({
+      id: "education",
+      heading: "Education",
+      kind: "entries",
+      text: null,
+      tags: [],
+      entries: education.map((item, index) => ({
+        id: `education-entry-${index + 1}`,
+        title: typeof item?.degree === "string" ? item.degree : "",
+        subtitle: typeof item?.institution === "string" ? item.institution : null,
+        period: typeof item?.year === "string" ? item.year : null,
+        bullets: [],
+      })),
+    });
+  }
+
+  const links = cv.links ?? {};
+  return {
+    header: {
+      fullName: typeof cv.fullName === "string" ? cv.fullName : "",
+      headline: typeof cv.designation === "string" ? cv.designation : "",
+      email: typeof cv.email === "string" ? cv.email : null,
+      phone: typeof cv.phone === "string" ? cv.phone : null,
+      location: typeof cv.location === "string" ? cv.location : null,
+      links: [links.linkedin, links.github, links.portfolio]
+        .concat(Array.isArray(links.other) ? links.other : [])
+        .filter((link) => typeof link === "string" && link.trim()),
+    },
+    sections,
+  };
+}
+
+/**
+ * Text generation, not document parsing — so this deliberately does NOT reuse
+ * GEMINI_MODEL. That variable belongs to the CV extractor, which reads uploaded
+ * PDFs and must keep its own model. This one is chosen for daily quota: on the
+ * free tier the Flash tiers allow 20 requests/day and Flash Lite allows 500,
+ * which is the difference between two users a day and fifty.
+ */
+const RESUME_MODEL = process.env.GEMINI_RESUME_MODEL || "gemini-3.5-flash-lite";
+
+const RESUME_TAILOR_PROMPT = `You are an expert resume writer. You write ATS-friendly resumes.
+
+You receive a candidate's real CV as JSON and a target job. Write the candidate's resume for that job.
+
+Return ONLY valid JSON (no markdown, no code fences) matching this schema:
+{
+  "targeting": {
+    "jobWants": string[],
+    "cvEvidence": string[],
+    "gaps": string[]
+  },
+  "header": { "headline": string },
+  "sections": [
+    {
+      "heading": string,
+      "kind": "text" | "entries" | "tags",
+      "text": string | null,
+      "entries": [
+        { "title": string, "subtitle": string | null, "period": string | null, "bullets": string[] }
+      ],
+      "tags": string[]
+    }
+  ]
+}
+
+FILL "targeting" FIRST, before writing anything else:
+- jobWants: the 6-10 things this job actually asks for, in its own words.
+- cvEvidence: for each of those the CV can back, the specific CV fact that backs it. Omit the ones it cannot.
+- gaps: what the job asks for that the CV has no evidence of. These must NOT appear anywhere in the resume.
+Then write the resume so that everything in cvEvidence is visible in it.
+
+TRUTH RULES (these outrank every other rule here):
+- Use ONLY facts present in the CV. Never invent an employer, job title, date, degree, tool, client, metric or outcome.
+- Include EVERY employer in the CV experience array. A missing job reads as an unexplained gap.
+- Keep employment in the CV's original order, and copy company names, job titles and dates EXACTLY as the CV writes them.
+- List a skill only if the CV contains it. Do not add a skill because the job asks for it.
+- If the CV has no evidence for something the job wants, leave it out. Do not hedge or imply it.
+
+ATS RULES:
+- Use standard headings: Summary, Experience, Skills, Projects, Education, Certifications.
+- "kind" is "text" for prose, "entries" for anything dated (experience, projects, education, certifications), "tags" for skills.
+- Spell out what the job description spells out. Where the CV and the job name the same thing differently, prefer the job's wording.
+- No pronouns, no first person, no filler, no self-praise.
+
+TAILORING RULES (the resume must look different for a different job):
+- Never copy a sentence from the CV unchanged. Rewrite every bullet to put what THIS job asks for at the front of the sentence.
+- A bullet's first six words decide whether it is read. Spend them on the part that matches this job, not on the part the CV happened to mention first.
+- Drop CV bullets that support nothing in jobWants. A shorter, on-target role beats a complete one.
+- Skills: strictly most relevant to this job first. Skills this job names must come before skills it does not. At most 14.
+- Summary: 2-3 sentences, and the first sentence must name the candidate's strongest overlap with THIS job.
+
+WRITING RULES:
+- headline: the candidate's current or target title, aligned to the job title where the CV supports it.
+- Bullets: 3-5 per role, each one sentence starting with a past-tense verb (present tense for a current role). Include a number only if that number is already in the CV.
+- Omit a section entirely rather than emitting it empty.`;
+
+/** Half the extract is unused here, and every field costs prompt tokens. */
+function compactCvForPrompt(cv) {
+  const pick = (value) =>
+    typeof value === "string" && value.trim() ? value.trim() : null;
+
+  return {
+    fullName: pick(cv.fullName),
+    designation: pick(cv.designation),
+    location: pick(cv.location),
+    summary: pick(cv.summary),
+    skills: (Array.isArray(cv.skills) ? cv.skills : []).slice(0, 60),
+    experience: (Array.isArray(cv.experience) ? cv.experience : []).map((job) => ({
+      title: pick(job?.title),
+      company: pick(job?.company),
+      startDate: pick(job?.startDate),
+      endDate: pick(job?.endDate),
+      description: pick(job?.description),
+    })),
+    projects: (Array.isArray(cv.projects) ? cv.projects : [])
+      .slice(0, 10)
+      .map((project) => ({
+        name: pick(project?.name),
+        description: pick(project?.description),
+        startDate: pick(project?.startDate),
+        endDate: pick(project?.endDate),
+      })),
+    education: (Array.isArray(cv.education) ? cv.education : []).map((item) => ({
+      degree: pick(item?.degree),
+      institution: pick(item?.institution),
+      year: pick(item?.year),
+    })),
+    certifications: (Array.isArray(cv.certifications) ? cv.certifications : []).map(
+      (cert) => ({
+        name: pick(cert?.name),
+        issuer: pick(cert?.issuer),
+        year: pick(cert?.year),
+      })
+    ),
+    languages: Array.isArray(cv.languages) ? cv.languages : [],
+  };
+}
+
+function normalizeName(value) {
+  return String(value ?? "")
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, " ")
+    .trim();
+}
+
+/** Substring in either direction, so "Acme" matches "Acme Corp" and back. */
+function namesOverlap(a, b) {
+  if (!a || !b) return false;
+  return a.includes(b) || b.includes(a);
+}
+
+function yearsIn(text) {
+  return new Set(String(text ?? "").match(/\b(?:19|20)\d{2}\b/g) ?? []);
+}
+
+const EXPERIENCE_HEADING = /experience|employment|work history/i;
+
+/**
+ * The model now decides structure, so the guarantees that used to hold by
+ * construction have to be checked instead. A resume that is wrong about the
+ * candidate's history is worse than one that is merely plainly worded, so any
+ * violation here throws the whole generation away.
+ *
+ * Returns a reason string, or null when the resume is trustworthy.
+ */
+function generatedResumeProblem(generated, cv) {
+  if (!generated || typeof generated !== "object") return "not an object";
+
+  const sections = Array.isArray(generated.sections) ? generated.sections : [];
+  if (sections.length === 0) return "no sections";
+
+  const allEntries = sections.flatMap((section) =>
+    Array.isArray(section?.entries) ? section.entries : []
+  );
+
+  const cvCompanies = (Array.isArray(cv.experience) ? cv.experience : [])
+    .map((job) => normalizeName(job?.company))
+    .filter(Boolean);
+
+  const entryNames = allEntries.flatMap((entry) => [
+    normalizeName(entry?.title),
+    normalizeName(entry?.subtitle),
+  ]);
+
+  for (const company of cvCompanies) {
+    if (!entryNames.some((name) => namesOverlap(name, company))) {
+      return `dropped employer "${company}"`;
+    }
+  }
+
+  // Only employment entries are checked for invented organisations: a project
+  // or certification subtitle is legitimately a stack or an issuer, and would
+  // fail a company-name check for no good reason.
+  if (cvCompanies.length > 0) {
+    for (const section of sections) {
+      if (!EXPERIENCE_HEADING.test(String(section?.heading ?? ""))) continue;
+      for (const entry of Array.isArray(section?.entries) ? section.entries : []) {
+        const subtitle = normalizeName(entry?.subtitle);
+        if (!subtitle) continue;
+        if (!cvCompanies.some((company) => namesOverlap(company, subtitle))) {
+          return `invented employer "${subtitle}"`;
+        }
+      }
+    }
+  }
+
+  // A year that appears nowhere in the CV can only have been made up.
+  const cvYears = yearsIn(JSON.stringify(cv));
+  for (const entry of allEntries) {
+    for (const year of yearsIn(entry?.period)) {
+      if (!cvYears.has(year)) return `invented date "${year}"`;
+    }
+  }
+
+  return null;
+}
+
+/**
+ * Ids are assigned here rather than asked of the model: the editor keys
+ * drag-and-drop off them, and a duplicate would make two sections move as one.
+ * Contact details are copied from the CV, never taken from the response — an
+ * email or phone number is not the model's to rewrite.
+ */
+function shapeGeneratedResume(generated, cv) {
+  const header = generated.header ?? {};
+  const links = cv.links ?? {};
+
+  const sections = (Array.isArray(generated.sections) ? generated.sections : [])
+    .map((section, index) => {
+      const rawKind = section?.kind;
+      const kind =
+        rawKind === "entries" || rawKind === "tags" || rawKind === "text"
+          ? rawKind
+          : "text";
+
+      return {
+        id: `section-${index + 1}`,
+        heading:
+          typeof section?.heading === "string" && section.heading.trim()
+            ? section.heading.trim()
+            : "Section",
+        kind,
+        text:
+          typeof section?.text === "string" && section.text.trim()
+            ? section.text.trim()
+            : null,
+        entries: (Array.isArray(section?.entries) ? section.entries : []).map(
+          (entry, position) => ({
+            id: `section-${index + 1}-entry-${position + 1}`,
+            title: typeof entry?.title === "string" ? entry.title.trim() : "",
+            subtitle:
+              typeof entry?.subtitle === "string" && entry.subtitle.trim()
+                ? entry.subtitle.trim()
+                : null,
+            period:
+              typeof entry?.period === "string" && entry.period.trim()
+                ? entry.period.trim()
+                : null,
+            bullets: (Array.isArray(entry?.bullets) ? entry.bullets : [])
+              .filter((bullet) => typeof bullet === "string" && bullet.trim())
+              .map((bullet) => bullet.trim()),
+          })
+        ),
+        tags: (Array.isArray(section?.tags) ? section.tags : [])
+          .filter((tag) => typeof tag === "string" && tag.trim())
+          .map((tag) => tag.trim()),
+      };
+    })
+    .filter(
+      (section) =>
+        (section.kind === "text" && section.text) ||
+        (section.kind === "entries" && section.entries.length > 0) ||
+        (section.kind === "tags" && section.tags.length > 0)
+    );
+
+  if (sections.length === 0) return null;
+
+  return {
+    header: {
+      fullName: typeof cv.fullName === "string" ? cv.fullName : "",
+      headline:
+        typeof header.headline === "string" && header.headline.trim()
+          ? header.headline.trim()
+          : typeof cv.designation === "string"
+            ? cv.designation
+            : "",
+      email: typeof cv.email === "string" && cv.email.trim() ? cv.email : null,
+      phone: typeof cv.phone === "string" && cv.phone.trim() ? cv.phone : null,
+      location:
+        typeof cv.location === "string" && cv.location.trim() ? cv.location : null,
+      links: [links.linkedin, links.github, links.portfolio]
+        .concat(Array.isArray(links.other) ? links.other : [])
+        .filter((link) => typeof link === "string" && link.trim()),
+    },
+    sections,
+  };
+}
+
+/** Returns null on any failure; the caller then builds the resume from the CV. */
+async function generateTailoredResume(cv, job, weights) {
+  const apiKey = process.env.GEMINI_API_KEY;
+  if (!apiKey) return null;
+
+  const genAI = new GoogleGenerativeAI(apiKey);
+  const model = genAI.getGenerativeModel({
+    model: RESUME_MODEL,
+    // Low, because creativity here shows up as invented facts — but not so low
+    // that the model plays it safe by copying the CV back verbatim, which is
+    // the failure this whole endpoint exists to avoid.
+    generationConfig: { responseMimeType: "application/json", temperature: 0.4 },
+  });
+
+  const result = await model.generateContent([
+    { text: RESUME_TAILOR_PROMPT },
+    {
+      text: `TARGET JOB
+Title: ${job.jobTitle || "(not given)"}
+Company: ${job.company || "(not given)"}
+Key terms: ${topKeywords(weights, 30).join(", ")}
+
+Description:
+${job.jobDescription}`,
+    },
+    { text: `CANDIDATE CV (JSON):\n${JSON.stringify(compactCvForPrompt(cv))}` },
+  ]);
+
+  const parsed = parseGeminiJson(result.response.text());
+
+  const problem = generatedResumeProblem(parsed, cv);
+  if (problem) {
+    console.error("[upstream:Gemini] tailored resume rejected —", problem);
+    return null;
+  }
+
+  return shapeGeneratedResume(parsed, cv);
+}
+
+app.post(
+  "/resume/tailor",
+  requireAuth,
+  resumeTailorLimiter,
+  asyncHandler(async (req, res) => {
+    const jobDescription = String(req.body?.jobDescription ?? "").trim();
+    if (!jobDescription) {
+      return res
+        .status(400)
+        .json({ success: false, error: "jobDescription is required" });
+    }
+
+    const jobTitle = String(req.body?.jobTitle ?? "").trim();
+    const company = String(req.body?.company ?? "").trim();
+
+    const supabaseUser = getSupabaseAsUser(req.accessToken);
+    if (!supabaseUser) {
+      return res.status(503).json({
+        success: false,
+        error: "Database is not configured on the server",
+      });
+    }
+
+    const { data: profileRow, error: profileError } = await findProfileForUser(
+      supabaseUser,
+      req.authUser.id
+    );
+
+    if (profileError) {
+      console.error("Resume tailor profile error:", profileError.message);
+      return res
+        .status(500)
+        .json({ success: false, error: "Could not load your CV profile" });
+    }
+
+    const profile = formatProfileRow(profileRow);
+    const cv = unwrapCv(profile?.extractedInformation);
+    if (!cv) {
+      return res.status(409).json({
+        success: false,
+        error:
+          "Save your CV details first — the builder needs them to write a resume.",
+      });
+    }
+
+    const weights = keywordWeights(jobDescription.slice(0, 12000), jobTitle, company);
+
+    let resume = null;
+    let source = "cv";
+
+    try {
+      resume = await generateTailoredResume(
+        cv,
+        { jobTitle, company, jobDescription: jobDescription.slice(0, 12000) },
+        weights
+      );
+      if (resume) source = "ai";
+    } catch (err) {
+      // Quota exhaustion and outages must not fail the request: the fallback
+      // below is a complete, accurate resume in the candidate's own wording.
+      console.error(
+        "[upstream:Gemini] resume tailor",
+        String(err?.message ?? err).slice(0, 500)
+      );
+    }
+
+    // Also reached when the generation was rejected for dropping a job or
+    // inventing a date — selection stays deterministic, so this is never worse
+    // than a truthful resume that reads a little flatter.
+    if (!resume) resume = buildResume(cv, weights);
+
+    return res.json({
+      success: true,
+      data: {
+        resume,
+        jobTitle: jobTitle || null,
+        company: company || null,
+        source,
+      },
+    });
+  })
+);
 
 /**
  * Identical proxy requests repeat constantly — every visitor's Home page asks
