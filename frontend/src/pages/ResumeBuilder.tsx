@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { Navigate, useLocation, useNavigate } from 'react-router-dom'
 import {
     DndContext,
@@ -35,7 +35,7 @@ import {
 import SectionPalette from '../components/resume/SectionPalette'
 import SectionProperties from '../components/resume/SectionProperties'
 import SortableSection, {
-    type RebuildBullet,
+    type RebuildText,
 } from '../components/resume/SortableSection'
 import { sectionFromBlueprint, type BlockBlueprint } from '../components/resume/blocks'
 import { useAuth } from '../context/AuthContext'
@@ -47,7 +47,7 @@ import {
 import {
     clearCachedResume,
     readCachedResume,
-    rebuildBullet as rebuildBulletRequest,
+    rebuildText as rebuildTextRequest,
     tailorCacheKey,
     tailorResume,
     writeCachedResume,
@@ -82,33 +82,147 @@ const DEFAULT_ACCENT = '#059669'
 const CANVAS_DROPPABLE_ID = 'resume-canvas'
 
 /**
+ * Page geometry, in CSS pixels. These must stay in step with the `@page` rule in
+ * index.css — the guides are only worth drawing if they fall exactly where the
+ * printer will actually break, and two different sets of numbers would make
+ * them quietly lie.
+ */
+const MM_TO_PX = 96 / 25.4
+export const PAGE = { name: 'A4', heightMM: 297, marginMM: 3.2 } as const
+const PAGE_CONTENT_PX = (PAGE.heightMM - PAGE.marginMM * 2) * MM_TO_PX
+
+/**
+ * Where the printer will break, expressed in the editor's own coordinates.
+ *
+ * The two do not agree on their own: `+ bullet`, `+ entry`, `+ skill` and the
+ * CV picker all take vertical space on screen and none on paper, so the editor
+ * runs taller than the document and a naive multiple of the page height lands
+ * far above the real break. So measure twice — once with those controls pulled
+ * out of the flow, once as the user sees it — and use the anchors that exist in
+ * both passes to convert a printed offset back to a screen one.
+ *
+ * Both passes happen inside one task, so this layout is never painted.
+ */
+function measurePageBreaks(content: HTMLElement): { tops: number[]; pages: number } {
+    const anchors = Array.from(
+        content.querySelectorAll<HTMLElement>('[data-flow-anchor]')
+    )
+
+    content.classList.add('measuring-print')
+    const printTops = anchors.map((el) => el.offsetTop)
+    const printHeight = content.offsetHeight
+    content.classList.remove('measuring-print')
+
+    const screenTops = anchors.map((el) => el.offsetTop)
+    const screenHeight = content.offsetHeight
+
+    const pages = Math.max(1, Math.ceil(printHeight / PAGE_CONTENT_PX))
+
+    // Anchors are in document order, which is already print order.
+    const toScreen = (printY: number): number => {
+        let i = 0
+        while (i + 1 < printTops.length && (printTops[i + 1] ?? 0) <= printY) i += 1
+
+        const printFrom = printTops[i] ?? 0
+        const screenFrom = screenTops[i] ?? 0
+        const printTo = printTops[i + 1] ?? printHeight
+        const screenTo = screenTops[i + 1] ?? screenHeight
+
+        const span = printTo - printFrom
+        // Degenerate span (two anchors at the same offset): fall back to the
+        // raw offset rather than dividing by zero.
+        if (span <= 0) return screenFrom + (printY - printFrom)
+
+        const ratio = (printY - printFrom) / span
+        return screenFrom + ratio * (screenTo - screenFrom)
+    }
+
+    const tops: number[] = []
+    for (let page = 1; page < pages; page += 1) {
+        tops.push(toScreen(page * PAGE_CONTENT_PX))
+    }
+
+    return { tops, pages }
+}
+
+/**
  * The sheet, as a drop target. Split out because useDroppable must run inside
  * the DndContext provider — calling it in the component that *renders*
  * DndContext registers nothing, and dropping onto empty canvas silently fails.
  */
 function CanvasSheet({
     onDeselect,
+    onPageCountChange,
     children,
 }: {
     onDeselect: () => void
+    onPageCountChange: (pages: number) => void
     children: React.ReactNode
 }) {
     const { setNodeRef, isOver } = useDroppable({ id: CANVAS_DROPPABLE_ID })
+    const contentRef = useRef<HTMLDivElement>(null)
+    const [breaks, setBreaks] = useState<number[]>([])
+    const measuring = useRef(false)
+
+    // Re-measured rather than computed once: every edit, style change and
+    // reorder moves the breaks.
+    useEffect(() => {
+        const element = contentRef.current
+        if (!element) return
+
+        const remeasure = () => {
+            // The measurement pass resizes the element itself; without this the
+            // observer would answer its own writes.
+            if (measuring.current) return
+            measuring.current = true
+            const { tops, pages } = measurePageBreaks(element)
+            measuring.current = false
+            setBreaks(tops)
+            onPageCountChange(pages)
+        }
+
+        remeasure()
+        const observer = new ResizeObserver(remeasure)
+        observer.observe(element)
+        return () => observer.disconnect()
+    }, [onPageCountChange])
+
+    // Only a click on the sheet itself deselects. Without the target check, a
+    // click on a section bubbles up here and clears the selection it just made.
+    const deselectOnSelf = (e: React.MouseEvent) => {
+        if (e.target === e.currentTarget) onDeselect()
+    }
 
     return (
         <article
             ref={setNodeRef}
-            // Only a click on the sheet itself deselects. Without the target
-            // check, a click on a section bubbles up here and clears the
-            // selection the section just made.
-            onClick={(e) => {
-                if (e.target === e.currentTarget) onDeselect()
-            }}
-            className={`mx-auto w-full max-w-[210mm] rounded-xl border bg-white p-3 shadow-sm transition-colors print:max-w-none print:rounded-none print:border-0 print:p-0 print:shadow-none ${
+            onClick={deselectOnSelf}
+            // print:w-full matters: at a fixed 210mm the sheet is 6.4mm wider than
+            // the page's content box, and Chrome silently shrink-to-fits the whole
+            // document (~97%) — printing smaller than the editor and putting the
+            // page-break guides, which assume 1:1, in the wrong place. Full width of
+            // the content box (203.6mm) equals the on-screen 210mm less its p-3.
+            className={`relative mx-auto w-[210mm] rounded-xl border bg-white p-3 shadow-sm transition-colors print:w-full print:max-w-none print:rounded-none print:border-0 print:p-0 print:shadow-none ${
                 isOver ? 'border-emerald-400 ring-2 ring-emerald-100' : 'border-neutral-200'
             }`}
         >
-            {children}
+            {/* A badge, not a rule: a line across the sheet cuts through whatever
+                text happens to sit at the boundary. Screen-only. */}
+            <div className="pointer-events-none absolute inset-0 print:hidden" aria-hidden>
+                {breaks.map((top, i) => (
+                    <span
+                        key={`page-break-${i}`}
+                        className="absolute -right-13 -translate-y-1/2 rounded bg-white px-1.5 text-[10px] font-medium text-neutral-400 ring-1 ring-neutral-200"
+                        style={{ top }}
+                    >
+                        Page {i + 2}
+                    </span>
+                ))}
+            </div>
+
+            <div ref={contentRef} onClick={deselectOnSelf}>
+                {children}
+            </div>
         </article>
     )
 }
@@ -238,6 +352,8 @@ export default function ResumeBuilder() {
     /** Entries select independently of their section, so a single role can be
      *  picked out of an Experience block to reorder or delete. */
     const [selectedEntryId, setSelectedEntryId] = useState<string | null>(null)
+    /** Reported up from the sheet so the toolbar can say how long the resume is. */
+    const [pageCount, setPageCount] = useState(1)
     const [source, setSource] = useState<ResumeSource>(cachedDraft?.source ?? 'cv')
     const [regenerateKey, setRegenerateKey] = useState(0)
     /** The saved CV, so sections can pull in real entries instead of retyping. */
@@ -392,10 +508,11 @@ export default function ResumeBuilder() {
     )
 
     /** null when there is no job to tailor against, which hides the affordance. */
-    const rebuildBullet: RebuildBullet | null = useCallback(
-        async (bullet: string, context: { entryTitle: string; entrySubtitle: string | null }) =>
-            rebuildBulletRequest({
-                bullet,
+    const rebuildText: RebuildText | null = useCallback<RebuildText>(
+        async (text, context) =>
+            rebuildTextRequest({
+                text,
+                kind: context.kind,
                 jobTitle: jobContext?.jobTitle ?? null,
                 company: jobContext?.company ?? null,
                 jobDescription: jobContext?.jobDescription ?? '',
@@ -487,6 +604,14 @@ export default function ResumeBuilder() {
                             <RefreshCcw className="h-4 w-4" aria-hidden />
                             Regenerate
                         </button>
+                        {resume ? (
+                            <span
+                                className="rounded-full bg-neutral-100 px-2.5 py-1 text-[11px] font-medium text-neutral-600"
+                                title={`Breaks are measured for ${PAGE.name} (${PAGE.heightMM}mm tall, ${PAGE.marginMM}mm margins)`}
+                            >
+                                {pageCount} {pageCount === 1 ? 'page' : 'pages'} · {PAGE.name}
+                            </span>
+                        ) : null}
                         <button
                             type="button"
                             onClick={() => window.print()}
@@ -500,7 +625,7 @@ export default function ResumeBuilder() {
                 </div>
             </div>
 
-            <div className="mx-auto max-w-350 px-4 py-6 print:max-w-none print:p-0">
+            <div className="px-4 py-6 print:max-w-none print:p-0">
                 {loading ? (
                     <div className="flex flex-col items-center gap-2 rounded-xl border border-neutral-200 bg-white py-20 text-sm text-neutral-600">
                         <Loader className="h-5 w-5 animate-spin" aria-hidden />
@@ -520,12 +645,21 @@ export default function ResumeBuilder() {
                         collisionDetection={closestCenter}
                         onDragEnd={handleDragEnd}
                     >
-                        <div className="flex items-start justify-center gap-5 print:block">
+                        {/* The sheet keeps a true 210mm rather than shrinking to
+                            fit: at any other width its line wrapping stops
+                            matching the print, and the page-break guides drawn
+                            on it would point at the wrong lines. A narrow window
+                            scrolls the page instead — deliberately not an
+                            overflow container here, because `overflow-x` forces
+                            `overflow-y` to compute to auto, which would strand
+                            the sticky palette and properties panels. */}
+                        <div className="flex items-start justify-evenly gap-5 print:block">
                             <SectionPalette onAdd={(bp) => addSection(bp)} />
 
                             {/* Canvas */}
-                            <div className="min-w-0 flex-1 print:w-full">
+                            <div className="w-[210mm] shrink-0 print:w-full">
                                 <CanvasSheet
+                                    onPageCountChange={setPageCount}
                                     onDeselect={() => {
                                         setSelectedId(null)
                                         setSelectedEntryId(null)
@@ -580,9 +714,9 @@ export default function ResumeBuilder() {
                                                     selected={section.id === selectedId}
                                                     selectedEntryId={selectedEntryId}
                                                     cv={cv}
-                                                    rebuildBullet={
+                                                    rebuildText={
                                                         jobContext.jobDescription
-                                                            ? rebuildBullet
+                                                            ? rebuildText
                                                             : null
                                                     }
                                                     onSelectEntry={(entryId) => {

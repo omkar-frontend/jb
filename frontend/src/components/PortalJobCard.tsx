@@ -1,6 +1,6 @@
-import { useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { FileText } from "lucide-react";
+import CompanyLogo from "./CompanyLogo";
 import { useAuth } from "../context/AuthContext";
 import type { ResumeBuilderState } from "../pages/ResumeBuilder";
 
@@ -37,37 +37,6 @@ function truncateDescription(raw: string | null | undefined): string | null {
     if (!clean) return null;
     if (clean.length <= DESCRIPTION_MAX) return clean;
     return `${clean.slice(0, DESCRIPTION_MAX)}…`;
-}
-
-function CompanyLogo({
-    logoUrl,
-    companyName,
-}: {
-    logoUrl?: string | null;
-    companyName: string;
-}) {
-    const [imgFailed, setImgFailed] = useState(false);
-    const letter = (companyName.trim()[0] ?? "?").toUpperCase();
-
-    if (!logoUrl || imgFailed) {
-        return (
-            <div
-                className="flex h-12 w-12 shrink-0 items-center justify-center rounded-md border border-neutral-200 bg-neutral-200 text-sm font-semibold text-neutral-700"
-                aria-hidden
-            >
-                {letter}
-            </div>
-        );
-    }
-
-    return (
-        <img
-            src={logoUrl}
-            alt=""
-            className="h-12 w-12 shrink-0 rounded-md border border-neutral-200 object-contain"
-            onError={() => setImgFailed(true)}
-        />
-    );
 }
 
 export default function PortalJobCard({

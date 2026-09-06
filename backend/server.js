@@ -256,7 +256,7 @@ const resumeTailorLimiter = rateLimit({
  * call and the limit can be far looser — a user polishing a resume clicks this
  * repeatedly, and hitting a wall mid-edit is worse than the cost it saves.
  */
-const bulletRewriteLimiter = rateLimit({
+const rewriteLimiter = rateLimit({
   windowMs: HOUR,
   limit: 60,
   standardHeaders: "draft-8",
@@ -1354,7 +1354,7 @@ app.post(
 
 const BULLET_REWRITE_PROMPT = `You rewrite a single resume bullet point so it reads well for a specific job.
 
-Return ONLY valid JSON (no markdown, no code fences): { "bullet": string }
+Return ONLY valid JSON (no markdown, no code fences): { "text": string }
 
 Rules:
 - Rewrite wording only. Never add a fact, tool, metric, employer, date or outcome that is not already in the bullet.
@@ -1364,21 +1364,64 @@ Rules:
 - One sentence, starting with a verb. No first person, no filler, no self-praise.
 - If the bullet is already the best version of itself, return it unchanged.`;
 
+const SUMMARY_REWRITE_PROMPT = `You rewrite a resume's professional summary so it reads well for a specific job.
+
+Return ONLY valid JSON (no markdown, no code fences): { "text": string }
+
+Rules:
+- Rewrite wording only. Never add a skill, tool, employer, date, metric or years of experience that is not already in the summary.
+- Never drop a fact that is in the summary. If it claims 3 years, the rewrite claims 3 years.
+- The first sentence must name the strongest overlap between what the summary already says and what the job asks for.
+- Where the summary already describes something the job names, prefer the job's wording.
+- 2-3 sentences of prose. No bullet points, no pronouns, no first person, no self-praise.
+- If the summary is already the best version of itself, return it unchanged.`;
+
+/** Per-kind prompt, framing and how far the rewrite may grow before it is junk. */
+const REWRITE_KINDS = {
+  bullet: {
+    prompt: BULLET_REWRITE_PROMPT,
+    label: "bullet",
+    // A one-liner that comes back much longer has stopped rewriting and started
+    // writing; prose legitimately breathes a little more.
+    maxGrowth: 2.5,
+    frame: (body) =>
+      `THIS BULLET BELONGS TO: ${body.entryTitle || "(role not given)"}${
+        body.entrySubtitle ? ` at ${body.entrySubtitle}` : ""
+      }`,
+  },
+  summary: {
+    prompt: SUMMARY_REWRITE_PROMPT,
+    label: "summary",
+    maxGrowth: 1.8,
+    frame: () => "THIS IS THE SUMMARY AT THE TOP OF THE RESUME.",
+  },
+};
+
 /**
- * Rewrites one line rather than the whole resume, so polishing a single weak
- * bullet does not cost a full regeneration and does not disturb the other
- * sections the user has already edited.
+ * Rewrites one piece of the resume rather than the whole thing, so polishing a
+ * weak line or a flat summary does not cost a full regeneration and does not
+ * disturb the sections the user has already edited by hand.
  */
 app.post(
-  "/resume/bullet",
+  "/resume/rewrite",
   requireAuth,
-  bulletRewriteLimiter,
+  rewriteLimiter,
   asyncHandler(async (req, res) => {
-    const bullet = String(req.body?.bullet ?? "").trim();
-    if (!bullet) {
+    // hasOwn, not a bare lookup: "constructor" or "toString" would otherwise
+    // resolve to something truthy off the prototype and be used as a config.
+    const requestedKind = String(req.body?.kind ?? "bullet");
+    const kind = Object.hasOwn(REWRITE_KINDS, requestedKind)
+      ? REWRITE_KINDS[requestedKind]
+      : null;
+    if (!kind) {
       return res
         .status(400)
-        .json({ success: false, error: "bullet is required" });
+        .json({ success: false, error: "kind must be 'bullet' or 'summary'" });
+    }
+
+    const text = String(req.body?.text ?? "").trim();
+    if (!text) {
+      return res.status(400).json({ success: false, error: "text is required" });
     }
 
     const apiKey = process.env.GEMINI_API_KEY;
@@ -1393,8 +1436,6 @@ app.post(
     const jobDescription = String(req.body?.jobDescription ?? "")
       .trim()
       .slice(0, 12000);
-    const entryTitle = String(req.body?.entryTitle ?? "").trim();
-    const entrySubtitle = String(req.body?.entrySubtitle ?? "").trim();
 
     const weights = keywordWeights(jobDescription, jobTitle, company);
 
@@ -1409,7 +1450,7 @@ app.post(
       });
 
       const result = await model.generateContent([
-        { text: BULLET_REWRITE_PROMPT },
+        { text: kind.prompt },
         {
           text: `TARGET JOB
 Title: ${jobTitle || "(not given)"}
@@ -1417,37 +1458,37 @@ Company: ${company || "(not given)"}
 Key terms: ${topKeywords(weights, 25).join(", ")}`,
         },
         {
-          text: `THIS BULLET BELONGS TO: ${entryTitle || "(role not given)"}${
-            entrySubtitle ? ` at ${entrySubtitle}` : ""
-          }\n\nBULLET:\n${bullet}`,
+          text: `${kind.frame({
+            entryTitle: String(req.body?.entryTitle ?? "").trim(),
+            entrySubtitle: String(req.body?.entrySubtitle ?? "").trim(),
+          })}\n\nTEXT:\n${text}`,
         },
       ]);
 
       const parsed = parseGeminiJson(result.response.text());
-      const rewritten =
-        typeof parsed?.bullet === "string" ? parsed.bullet.trim() : "";
+      const rewritten = typeof parsed?.text === "string" ? parsed.text.trim() : "";
 
       // A year the original never mentioned can only have been invented, and a
-      // wildly longer line means the model wrote past the one fact it was given.
+      // much longer answer means the model wrote past the facts it was given.
       const invented = [...yearsIn(rewritten)].some(
-        (year) => !yearsIn(bullet).has(year)
+        (year) => !yearsIn(text).has(year)
       );
-      if (!rewritten || invented || rewritten.length > bullet.length * 2.5) {
+      if (!rewritten || invented || rewritten.length > text.length * kind.maxGrowth) {
         return res.status(422).json({
           success: false,
-          error: "The rewrite did not keep to your original line. Try again.",
+          error: "The rewrite did not keep to your original wording. Try again.",
         });
       }
 
-      return res.json({ success: true, data: { bullet: rewritten } });
+      return res.json({ success: true, data: { text: rewritten } });
     } catch (err) {
       console.error(
-        "[upstream:Gemini] bullet rewrite",
+        `[upstream:Gemini] ${kind.label} rewrite`,
         String(err?.message ?? err).slice(0, 500)
       );
       return res
         .status(502)
-        .json({ success: false, error: "Could not rewrite that line right now." });
+        .json({ success: false, error: "Could not rewrite that right now." });
     }
   })
 );

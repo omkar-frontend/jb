@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { AlertCircle, FileText, Loader, RefreshCcw } from 'lucide-react'
 import AuthDialog from './AuthDialog'
+import CompanyLogo from './CompanyLogo'
 import { useAuth } from '../context/AuthContext'
 import {
     getCvProfile,
@@ -47,20 +48,11 @@ function JobCard({
             tabIndex={listingUrl ? 0 : undefined}
         >
             <div className="flex flex-col gap-3 sm:flex-row sm:items-start">
-                {job.logo ? (
-                    <img
-                        src={job.logo}
-                        alt=""
-                        className="h-10 w-10 shrink-0 rounded-md border border-neutral-200 object-contain"
-                    />
-                ) : (
-                    <div
-                        className="flex h-10 w-10 shrink-0 items-center justify-center rounded-md border border-neutral-200 bg-neutral-200 text-sm font-semibold text-neutral-700"
-                        aria-hidden
-                    >
-                        {(job.company.trim()[0] ?? '?').toUpperCase()}
-                    </div>
-                )}
+                <CompanyLogo
+                    logoUrl={job.logo}
+                    companyName={job.company}
+                    className="h-10 w-10"
+                />
                 <div className="min-w-0 flex-1">
                     <div className="flex flex-wrap items-start justify-between gap-2">
                         <p className="font-semibold text-neutral-900 text-base">{job.title}</p>

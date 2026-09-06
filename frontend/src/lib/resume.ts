@@ -285,28 +285,32 @@ export async function tailorResume(
 }
 
 
-export type BulletRewriteRequest = {
-    bullet: string
+export type RewriteKind = 'bullet' | 'summary'
+
+export type RewriteRequest = {
+    text: string
+    kind: RewriteKind
     jobTitle: string | null
     company: string | null
     jobDescription: string
-    entryTitle: string
-    entrySubtitle: string | null
+    /** Only meaningful for bullets; the summary has no owning entry. */
+    entryTitle?: string
+    entrySubtitle?: string | null
 }
 
-type BulletRewriteApiResponse = {
+type RewriteApiResponse = {
     success: boolean
-    data?: { bullet: string }
+    data?: { text: string }
     error?: string
 }
 
 /**
- * Rewrites a single bullet. Kept separate from tailorResume so polishing one
- * weak line costs one cheap call rather than regenerating the document and
- * discarding every edit the user has already made.
+ * Rewrites one bullet or the summary. Kept separate from tailorResume so
+ * polishing a single weak line costs one cheap call rather than regenerating
+ * the document and discarding every edit the user has already made.
  */
-export async function rebuildBullet(
-    request: BulletRewriteRequest,
+export async function rebuildText(
+    request: RewriteRequest,
     signal?: AbortSignal
 ): Promise<{ text: string | null; error: string | null }> {
     if (!isApiConfigured()) {
@@ -314,20 +318,20 @@ export async function rebuildBullet(
     }
 
     try {
-        const response = await api.post<BulletRewriteApiResponse>(
-            '/resume/bullet',
+        const response = await api.post<RewriteApiResponse>(
+            '/resume/rewrite',
             request,
             { signal, timeout: 60_000 }
         )
 
-        if (!response.data.success || !response.data.data?.bullet) {
+        if (!response.data.success || !response.data.data?.text) {
             return {
                 text: null,
-                error: response.data.error ?? 'Could not rewrite that line',
+                error: response.data.error ?? 'Could not rewrite that',
             }
         }
 
-        return { text: response.data.data.bullet, error: null }
+        return { text: response.data.data.text, error: null }
     } catch (err) {
         return { text: null, error: tailorErrorMessage(err) }
     }

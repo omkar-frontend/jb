@@ -12,7 +12,7 @@ export default function Header() {
     const initials = userLabel.slice(0, 1).toUpperCase()
 
     return (
-        <header className="sticky top-0 z-10 flex items-center justify-between gap-2 border-b border-neutral-200 bg-white/95 px-3 py-3 text-neutral-900 backdrop-blur-sm sm:p-4">
+        <header data-app-chrome className="sticky top-0 z-10 flex items-center justify-between gap-2 border-b border-neutral-200 bg-white/95 px-3 py-3 text-neutral-900 backdrop-blur-sm sm:p-4">
             <Link to="/" className="min-w-0 shrink">
                 <p className="truncate text-lg font-semibold sm:text-xl">
                     Jobs <span className="text-emerald-600">Board</span>

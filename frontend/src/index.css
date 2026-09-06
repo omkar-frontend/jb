@@ -266,12 +266,23 @@
     }
 }
 
+/* Used for a single synchronous measurement pass: the sheet is laid out as it
+   will print, with the screen-only controls pulled out of the flow, so the page
+   guides can be placed where the printer will actually break rather than where
+   the editor's own buttons happen to push the content. Applied and removed
+   within one task, so nothing is ever painted in this state. */
+.measuring-print .print\:hidden {
+    display: none !important;
+}
+
 /* Resume builder: the printed page is the deliverable, so strip the app chrome
    and let the document run full-bleed. Text stays real text — never rasterise a
    resume, ATS parsers cannot read an image. */
 @media print {
-    header,
-    footer {
+    /* Scoped to the app chrome by attribute, not by tag. A bare `header` rule
+       also matched the resume's own name-and-contact block, which is a <header>
+       too — so the finished PDF came out with no name on it. */
+    [data-app-chrome] {
         display: none !important;
     }
 
@@ -281,6 +292,12 @@
 
     @page {
         size: A4;
-        margin: 14mm;
+        /* The sheet drops its own padding when printing (print:p-0), so this is
+           the only margin the page gets — and it has to equal what the editor
+           shows or the PDF comes out narrower than the sheet the user laid out.
+           3.2mm == the sheet's p-3 (12px). Keep the two in step: raising the
+           sheet's padding without raising this re-opens the mismatch.
+           Physical printers can clip below ~5mm; Save-as-PDF has no such limit. */
+        margin: 3.2mm;
     }
 }

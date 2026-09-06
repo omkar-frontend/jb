@@ -3,7 +3,12 @@ import { SortableContext, useSortable, verticalListSortingStrategy } from '@dnd-
 import { CSS } from '@dnd-kit/utilities'
 import { GripVertical, Loader, Sparkles, Trash2 } from 'lucide-react'
 import type { CvExtracted } from '../../lib/cvProfile'
-import { FONT_STACKS, type ResumeEntry, type ResumeSection } from '../../lib/resume'
+import {
+    FONT_STACKS,
+    type ResumeEntry,
+    type ResumeSection,
+    type RewriteKind,
+} from '../../lib/resume'
 import CvPicker from './CvPicker'
 
 /** contentEditable rather than inputs: the sheet itself is the editing surface. */
@@ -78,10 +83,89 @@ function Controls({
     )
 }
 
-export type RebuildBullet = (
-    bullet: string,
-    context: { entryTitle: string; entrySubtitle: string | null }
+export type RebuildText = (
+    text: string,
+    context: {
+        kind: RewriteKind
+        entryTitle?: string
+        entrySubtitle?: string | null
+    }
 ) => Promise<{ text: string | null; error: string | null }>
+
+/**
+ * One rewrite target — a bullet, or the summary. Owns its own pending and error
+ * state so a failure on one line says nothing about any other, and so the two
+ * call sites do not each reimplement the same three pieces of state.
+ */
+function RewriteAction({
+    value,
+    kind,
+    entryTitle,
+    entrySubtitle,
+    rebuild,
+    onRewritten,
+    revealed,
+}: {
+    value: string
+    kind: RewriteKind
+    entryTitle?: string
+    entrySubtitle?: string | null
+    rebuild: RebuildText | null
+    onRewritten: (next: string) => void
+    /** Focus reveals the button; hover is only a shortcut to the same thing. */
+    revealed: boolean
+}) {
+    const [running, setRunning] = useState(false)
+    const [error, setError] = useState<string | null>(null)
+
+    if (!rebuild || !value.trim()) return null
+
+    const run = async () => {
+        setRunning(true)
+        setError(null)
+        const { text, error: failed } = await rebuild(value, {
+            kind,
+            entryTitle,
+            entrySubtitle,
+        })
+        setRunning(false)
+        if (failed || !text) {
+            setError(failed ?? 'Could not rewrite that')
+            return
+        }
+        onRewritten(text)
+    }
+
+    return (
+        <>
+            <button
+                type="button"
+                // onMouseDown, not onClick: the editable field blurs first and
+                // its re-render would otherwise move the button out from under
+                // the pointer before the click lands.
+                onMouseDown={(e) => {
+                    e.preventDefault()
+                    e.stopPropagation()
+                    void run()
+                }}
+                disabled={running}
+                className={`ml-2 inline-flex items-center gap-1 rounded border border-emerald-200 px-1.5 py-0.5 align-middle text-[10px] text-emerald-700 transition-opacity hover:bg-emerald-50 disabled:opacity-50 print:hidden ${
+                    revealed ? 'opacity-100' : 'opacity-0 group-hover/rw:opacity-100'
+                }`}
+            >
+                {running ? (
+                    <Loader className="h-2.5 w-2.5 animate-spin" aria-hidden />
+                ) : (
+                    <Sparkles className="h-2.5 w-2.5" aria-hidden />
+                )}
+                Rebuild with AI
+            </button>
+            {error ? (
+                <span className="ml-2 text-[10px] text-red-600 print:hidden">{error}</span>
+            ) : null}
+        </>
+    )
+}
 
 /**
  * One role, project or degree. Sortable in its own right: a section holds
@@ -95,7 +179,7 @@ function SortableEntry({
     onSelect,
     onChange,
     onRemove,
-    rebuildBullet,
+    rebuildText,
 }: {
     entry: ResumeEntry
     sectionId: string
@@ -104,40 +188,22 @@ function SortableEntry({
     onSelect: () => void
     onChange: (next: ResumeEntry) => void
     onRemove: () => void
-    rebuildBullet: RebuildBullet | null
+    rebuildText: RebuildText | null
 }) {
     const { attributes, listeners, setNodeRef, transform, transition, isDragging } =
         useSortable({ id: entry.id, data: { type: 'entry', sectionId } })
 
-    /** Which bullet is open for editing — only that one offers the AI rewrite. */
+    /** Which bullet is open for editing — only that one shows its rewrite button. */
     const [activeBullet, setActiveBullet] = useState<number | null>(null)
-    const [rebuilding, setRebuilding] = useState<number | null>(null)
-    const [rebuildError, setRebuildError] = useState<string | null>(null)
 
     const setBullets = (bullets: string[]) => onChange({ ...entry, bullets })
-
-    const handleRebuild = async (index: number) => {
-        const original = entry.bullets[index]
-        if (!rebuildBullet || original === undefined) return
-        setRebuilding(index)
-        setRebuildError(null)
-        const { text, error } = await rebuildBullet(original, {
-            entryTitle: entry.title,
-            entrySubtitle: entry.subtitle,
-        })
-        setRebuilding(null)
-        if (error || !text) {
-            setRebuildError(error ?? 'Could not rewrite that line')
-            return
-        }
-        const bullets = [...entry.bullets]
-        bullets[index] = text
-        setBullets(bullets)
-    }
 
     return (
         <div
             ref={setNodeRef}
+            // Measured in both the print and screen layout passes to convert a
+            // printed offset back into a position on the editor's sheet.
+            data-flow-anchor
             onClick={(e) => {
                 e.stopPropagation()
                 onSelect()
@@ -187,9 +253,16 @@ function SortableEntry({
                 />
             </p>
 
+            {/* Certifications and degrees carry no bullets, and an empty <ul>
+                still took its mt-1, adding a stray gap under every such entry. */}
+            {entry.bullets.length > 0 ? (
             <ul className="mt-1 list-disc space-y-0.5 pl-4 leading-relaxed marker:text-neutral-400">
                 {entry.bullets.map((bullet, bulletIndex) => (
-                    <li key={`${entry.id}-b-${bulletIndex}`} className="group/bullet">
+                    <li
+                        key={`${entry.id}-b-${bulletIndex}`}
+                        data-flow-anchor
+                        className="group/rw"
+                    >
                         <Editable
                             ariaLabel="Bullet point"
                             placeholder="Describe what you did"
@@ -206,38 +279,22 @@ function SortableEntry({
                         />
                         {/* Rewriting one line at a time, so a single weak bullet
                             does not cost a rebuild of the whole document. */}
-                        {rebuildBullet && bullet.trim() ? (
-                            <button
-                                type="button"
-                                // onMouseDown, not onClick: the editable field
-                                // blurs first and its re-render would otherwise
-                                // move the button out from under the pointer.
-                                onMouseDown={(e) => {
-                                    e.preventDefault()
-                                    e.stopPropagation()
-                                    void handleRebuild(bulletIndex)
-                                }}
-                                disabled={rebuilding !== null}
-                                className={`ml-2 inline-flex items-center gap-1 rounded border border-emerald-200 px-1.5 py-0.5 align-middle text-[10px] text-emerald-700 transition-opacity hover:bg-emerald-50 disabled:opacity-50 print:hidden ${
-                                    activeBullet === bulletIndex
-                                        ? 'opacity-100'
-                                        : 'opacity-0 group-hover/bullet:opacity-100'
-                                }`}
-                            >
-                                {rebuilding === bulletIndex ? (
-                                    <Loader className="h-2.5 w-2.5 animate-spin" aria-hidden />
-                                ) : (
-                                    <Sparkles className="h-2.5 w-2.5" aria-hidden />
-                                )}
-                                Rebuild with AI
-                            </button>
-                        ) : null}
+                        <RewriteAction
+                            value={bullet}
+                            kind="bullet"
+                            entryTitle={entry.title}
+                            entrySubtitle={entry.subtitle}
+                            rebuild={rebuildText}
+                            revealed={activeBullet === bulletIndex}
+                            onRewritten={(next) => {
+                                const bullets = [...entry.bullets]
+                                bullets[bulletIndex] = next
+                                setBullets(bullets)
+                            }}
+                        />
                     </li>
                 ))}
             </ul>
-
-            {rebuildError ? (
-                <p className="mt-1 text-[10px] text-red-600 print:hidden">{rebuildError}</p>
             ) : null}
 
             <button
@@ -264,7 +321,7 @@ export default function SortableSection({
     onSelectEntry,
     onChange,
     onRemove,
-    rebuildBullet,
+    rebuildText,
 }: {
     section: ResumeSection
     accent: string
@@ -276,10 +333,14 @@ export default function SortableSection({
     onSelectEntry: (entryId: string) => void
     onChange: (next: ResumeSection) => void
     onRemove: () => void
-    rebuildBullet: RebuildBullet | null
+    rebuildText: RebuildText | null
 }) {
     const { attributes, listeners, setNodeRef, transform, transition, isDragging } =
         useSortable({ id: section.id, data: { type: 'section' } })
+
+    /** Whether the prose of a text section is being edited, which reveals its
+     *  rewrite button the same way focusing a bullet reveals that line's. */
+    const [textActive, setTextActive] = useState(false)
 
     const { style } = section
     const headingColor = style.headingColor ?? accent
@@ -287,6 +348,7 @@ export default function SortableSection({
     return (
         <section
             ref={setNodeRef}
+            data-flow-anchor
             onClick={onSelect}
             style={{
                 // Translate, not Transform: dnd-kit's sortable transform carries
@@ -301,7 +363,12 @@ export default function SortableSection({
                 fontWeight: style.fontWeight,
                 color: style.color ?? undefined,
             }}
-            className={`group relative rounded-lg p-1 ring-offset-2 transition-shadow print:ring-0 ${
+            // print:ring-offset-0 is load-bearing, not belt-and-braces: Tailwind's
+            // `ring-0` resolves to calc(0px + var(--tw-ring-offset-width)), so
+            // with ring-offset-2 still set it draws a 2px ring instead of none —
+            // which is why every section printed inside a box it never had on
+            // screen, where no ring-* class makes the shadow transparent.
+            className={`group relative rounded-lg p-1 ring-offset-2 transition-shadow print:ring-0 print:ring-offset-0 ${
                 isDragging ? 'z-10 bg-white shadow-lg ring-1 ring-emerald-200' : ''
             } ${selected ? 'ring-2 ring-emerald-400/70 print:ring-0' : ''}`}
         >
@@ -331,12 +398,22 @@ export default function SortableSection({
 
             {section.kind === 'text' ? (
                 <>
-                    <p className="leading-relaxed">
+                    <p className="group/rw leading-relaxed">
                         <Editable
                             ariaLabel="Section text"
                             placeholder="Write a short paragraph"
                             value={section.text ?? ''}
+                            // Same contract as a bullet: clicking into the prose
+                            // is what puts its rewrite button on screen.
+                            onFocus={() => setTextActive(true)}
                             onChange={(text) => onChange({ ...section, text })}
+                        />
+                        <RewriteAction
+                            value={section.text ?? ''}
+                            kind="summary"
+                            rebuild={rebuildText}
+                            revealed={textActive}
+                            onRewritten={(text) => onChange({ ...section, text })}
                         />
                     </p>
                     {!section.text?.trim() ? (
@@ -387,7 +464,8 @@ export default function SortableSection({
             ) : null}
 
             {section.kind === 'entries' ? (
-                <div className="space-y-3">
+                <>
+                    <div>
                     <SortableContext
                         items={section.entries.map((entry) => entry.id)}
                         strategy={verticalListSortingStrategy}
@@ -400,7 +478,7 @@ export default function SortableSection({
                                 fontSize={style.fontSize}
                                 selected={entry.id === selectedEntryId}
                                 onSelect={() => onSelectEntry(entry.id)}
-                                rebuildBullet={rebuildBullet}
+                                rebuildText={rebuildText}
                                 onChange={(next) => {
                                     const entries = [...section.entries]
                                     entries[entryIndex] = next
@@ -417,30 +495,37 @@ export default function SortableSection({
                             />
                         ))}
                     </SortableContext>
-                    <button
-                        type="button"
-                        onClick={(e) => {
-                            e.stopPropagation()
-                            onChange({
-                                ...section,
-                                entries: [
-                                    ...section.entries,
-                                    {
-                                        id: `${section.id}-entry-${section.entries.length + 1}-${Date.now().toString(36)}`,
-                                        title: '',
-                                        subtitle: '',
-                                        period: '',
-                                        bullets: [''],
-                                    },
-                                ],
-                            })
-                        }}
-                        className="text-[11px] text-neutral-400 hover:text-emerald-600 print:hidden"
-                    >
-                        + entry
-                    </button>
-                    <CvPicker section={section} cv={cv} onChange={onChange} />
-                </div>
+                    </div>
+                    {/* Outside the spaced list on purpose: Tailwind's space-y
+                        margins target :not(:last-child), so a print-hidden
+                        sibling at the end still pushed the last entry up and
+                        left a gap under every section on the printed page. */}
+                    <div className="mt-3 flex flex-wrap items-center gap-2 print:hidden">
+                        <button
+                            type="button"
+                            onClick={(e) => {
+                                e.stopPropagation()
+                                onChange({
+                                    ...section,
+                                    entries: [
+                                        ...section.entries,
+                                        {
+                                            id: `${section.id}-entry-${section.entries.length + 1}-${Date.now().toString(36)}`,
+                                            title: '',
+                                            subtitle: '',
+                                            period: '',
+                                            bullets: [''],
+                                        },
+                                    ],
+                                })
+                            }}
+                            className="text-[11px] text-neutral-400 hover:text-emerald-600"
+                        >
+                            + entry
+                        </button>
+                        <CvPicker section={section} cv={cv} onChange={onChange} />
+                    </div>
+                </>
             ) : null}
         </section>
     )

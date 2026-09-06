@@ -384,10 +384,13 @@ export default function CvUpload({ onCvUpdated }: CvUploadProps) {
             {error ? (
                 <div
                     role="alert"
-                    className="mt-4 flex items-center gap-2 rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-[13px] text-red-800"
+                    className="mt-4 flex items-start gap-2 rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-[13px] text-red-800"
                 >
-                    <AlertCircle className="h-4 w-4 shrink-0" aria-hidden />
-                    <span>Failed to extract your CV. Please try again.</span>
+                    <AlertCircle className="mt-0.5 h-4 w-4 shrink-0" aria-hidden />
+                    {/* The actual reason, not a fixed line: this banner also
+                        reports the size and file-type checks that run on
+                        selection, long before there is an extraction to fail. */}
+                    <span>{error}</span>
                 </div>
             ) : null}
 
